@@ -1,0 +1,9 @@
+numpy
+pandas
+pyarrow
+fastparquet
+polars
+ipykernel
+scikit-learn
+statsmodels
+lightgbm

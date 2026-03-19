@@ -1,0 +1,25 @@
+# Virtual Environment
+.venv/
+env/
+venv/
+ENV/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Data files (Very heavy, do not push to GitHub)
+ts-forecasting/
+submission.csv
+
+# AutoGluon models and artifacts
+ag_models/
+
+# Logs and large binary reports
+logs/
+reports/*.csv
+reports/*.png
+
+# VS Code settings
+.vscode/

@@ -1,0 +1,28 @@
+=== FINAL TEST SET EVALUATION ===
+Method: Leak-Free Purged K-Fold (Chronological Train/Test + Validation)
+Kaggle Zero-Mean R2 Score: 0.007430
+
+Note: Models have been saved to 'models_param' directory.
+
+Top 20 Features:
+     feature   importance
+sub_category 3.497066e+06
+      t1_end 2.196962e+06
+  feature_aq 9.223074e+05
+  feature_cf 6.900375e+05
+  feature_ar 6.895909e+05
+  feature_bt 6.572704e+05
+  feature_ai 6.545058e+05
+     horizon 6.349618e+05
+  feature_ce 5.775777e+05
+   feature_j 5.624637e+05
+  feature_as 5.560803e+05
+   feature_i 5.395374e+05
+  feature_ad 5.217699e+05
+   feature_k 5.139607e+05
+  feature_cg 5.018540e+05
+   feature_z 4.575394e+05
+  feature_be 4.535699e+05
+  feature_ac 4.514186e+05
+    sub_code 4.320545e+05
+   feature_a 4.295108e+05

@@ -1,0 +1,4 @@
+=== SYNCED PURGED BENCHMARK EVALUATION ===
+Data: RAW (dropna() row-wise)
+Validation: Leak-Free Purged K-Fold (Synced with train.py)
+Kaggle Zero-Mean R2 Score: 0.004348
