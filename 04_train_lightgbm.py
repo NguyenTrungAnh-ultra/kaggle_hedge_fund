@@ -6,6 +6,7 @@ from sklearn.preprocessing import LabelEncoder
 import os
 import warnings
 import sys
+import optuna
 
 warnings.filterwarnings('ignore')
 
@@ -14,22 +15,6 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOG_DIR = os.path.join(BASE_DIR, 'logs')
 if not os.path.exists(LOG_DIR):
     os.makedirs(LOG_DIR)
-
-class Logger(object):
-    def __init__(self):
-        self.terminal = sys.stdout
-        self.log = open(os.path.join(LOG_DIR, "lightgbm_train.log"), "a", encoding='utf-8')
-
-    def write(self, message):
-        self.terminal.write(message)
-        self.log.write(message)
-        self.log.flush()
-
-    def flush(self):
-        self.terminal.flush()
-        self.log.flush()
-
-sys.stdout = Logger()
 
 # --- KAGGLE COMPETITION METRIC ---
 def _clip01(x: float) -> float:
@@ -99,6 +84,68 @@ class LeakFreePurgedKFold:
             
             yield train_indices, test_indices
 
+def objective(trial, train_df, features):
+    # Search space
+    param = {
+        'objective': 'regression',
+        'metric': 'l2',
+        'verbosity': -1,
+        'boosting_type': 'gbdt',
+        'device': 'gpu',
+        'gpu_use_dp': True,
+        'learning_rate': trial.suggest_float('learning_rate', 1e-3, 0.1, log=True),
+        'n_estimators': trial.suggest_int('n_estimators', 100, 1500),
+        'num_leaves': trial.suggest_int('num_leaves', 8, 128),
+        'max_depth': trial.suggest_int('max_depth', 3, 10),
+        'min_child_samples': trial.suggest_int('min_child_samples', 50, 5000),
+        'feature_fraction': trial.suggest_float('feature_fraction', 0.5, 0.9),
+        'bagging_fraction': trial.suggest_float('bagging_fraction', 0.5, 0.9),
+        'bagging_freq': trial.suggest_int('bagging_freq', 1, 7),
+        'lambda_l1': trial.suggest_float('lambda_l1', 1e-8, 1.0, log=True),
+        'lambda_l2': trial.suggest_float('lambda_l2', 1e-8, 1.0, log=True),
+        'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 500, 3000),
+        'min_sum_hessian_in_leaf': trial.suggest_float('min_sum_hessian_in_leaf', 1e-4, 0.1, log=True),
+        'extra_trees': trial.suggest_categorical('extra_trees', [True, False]),
+    }
+
+    # Use a simple Hold-out (last 20% of the sample for validation) to be extremely fast
+    # train_df is already sorted by time (ts_index)
+    unique_ts = np.sort(train_df['ts_index'].unique())
+    split_idx = int(len(unique_ts) * 0.8)
+    split_ts = unique_ts[split_idx]
+
+    tr_mask = train_df['ts_index'] < split_ts
+    va_mask = train_df['ts_index'] >= split_ts
+    
+    # Purge the gap in-between
+    va_start = train_df[va_mask]['ts_index'].min()
+    overlap_mask = (tr_mask) & (train_df['t1_end'] > va_start)
+    tr_mask = tr_mask & (~overlap_mask)
+
+    X_tr = train_df[tr_mask][features].values
+    y_tr = train_df[tr_mask]['y_target'].values
+    w_tr = train_df[tr_mask]['weight'].values
+
+    X_va = train_df[va_mask][features].values
+    y_va = train_df[va_mask]['y_target'].values
+    w_va = train_df[va_mask]['weight'].values
+
+    print(f"    [Trial {trial.number}] Training with {len(X_tr)} samples, Val with {len(X_va)}...")
+
+    model = lgb.LGBMRegressor(**param)
+    model.fit(
+        X_tr, y_tr,
+        sample_weight=w_tr,
+        eval_set=[(X_va, y_va)],
+        eval_sample_weight=[w_va],
+        callbacks=[lgb.early_stopping(stopping_rounds=30, verbose=False)]
+    )
+
+    v_preds = model.predict(X_va)
+    score = zero_mean_r2_score(y_va, v_preds, w_va)
+    print(f"    [Trial {trial.number}] Validation R2: {score:.6f}")
+    return score
+
 def main():
     print("1. Loading dataset...")
     # Read the data produced by process_data.py
@@ -156,10 +203,10 @@ def main():
 
     # Definition of features
     # Mở rộng danh sách loại trừ bằng các tính năng Không Dừng (Failed FracDiff)
-    blacklist = ['feature_h', 'feature_j', 'feature_l', 'feature_ah', 'feature_an', 'feature_bd', 
-                'feature_be', 'feature_bf', 'feature_bh', 'feature_bm', 'feature_bn', 'feature_bo', 
-                'feature_bq', 'feature_br', 'feature_by', 'feature_bz', 'feature_ca', 'feature_cb', 
-                'feature_cc', 'feature_cd', 'feature_bg', 'feature_bp']
+    # blacklist = ['feature_h', 'feature_j', 'feature_l', 'feature_ah', 'feature_an', 'feature_bd', 
+    #             'feature_be', 'feature_bf', 'feature_bh', 'feature_bm', 'feature_bn', 'feature_bo', 
+    #             'feature_bq', 'feature_br', 'feature_by', 'feature_bz', 'feature_ca', 'feature_cb', 
+    #             'feature_cc', 'feature_cd', 'feature_bg', 'feature_bp']
 
     exclude = ['id', 'y_target', 'weight', 'ts_index', 't1_end'] 
     features = [c for c in df.columns if c not in exclude]
@@ -186,7 +233,58 @@ def main():
         
     print(f"Total modeling features: {len(features)}")
 
-    print("\n3. Starting Leak-Free Purged K-Fold Training on Train Set...")
+    def tune():
+        print("\n3. Starting Optuna Hyperparameter Tuning (using 20% sample + Single Split for extreme speed)...")
+        # Add Optuna log handler to write to our log file
+        import logging
+        optuna_log_file = os.path.join(LOG_DIR, "lightgbm_train.log")
+        optuna.logging.get_logger("optuna").addHandler(logging.FileHandler(optuna_log_file))
+        
+        # Sample 20% of data for tuning speed
+        train_df_sample = train_df.sample(frac=0.2, random_state=42).reset_index(drop=True)
+        # Ensure it's sorted by time for the split logic
+        train_df_sample = train_df_sample.sort_values('ts_index').reset_index(drop=True)
+        
+        study = optuna.create_study(direction='maximize')
+        study.optimize(lambda trial: objective(trial, train_df_sample, features), n_trials=20)
+        
+        print("\nBest trial:")
+        trial = study.best_trial
+        print(f"  Value: {trial.value}")
+        print("  Params: ")
+        for key, value in trial.params.items():
+            print(f"    {key}: {value}")
+
+        return trial.params
+
+    # 3. Use given Best Hyperparameters (Skipping Optuna)
+    best_params = {
+        'learning_rate': 0.017495140071357364,
+        'n_estimators': 703,
+        'num_leaves': 111,
+        'max_depth': 9,
+        'min_child_samples': 1707,
+        'feature_fraction': 0.6691779681001662,
+        'bagging_fraction': 0.700543212951226,
+        'bagging_freq': 4,
+        'lambda_l1': 7.808594229512663e-06,
+        'lambda_l2': 8.799790407946162e-08,
+        'min_data_in_leaf': 777,
+        'min_sum_hessian_in_leaf': 0.0030318444826433625,
+        'extra_trees': False
+    }
+    # Ensure standard parameters are included
+    best_params.update({
+        'objective': 'regression',
+        'metric': 'l2',
+        'verbosity': -1,
+        'boosting_type': 'gbdt',
+        'device': 'gpu',
+        'gpu_use_dp': True,
+        'importance_type': 'gain'
+    })
+
+    print("\n4. Starting Leak-Free Purged K-Fold Training with Best Parameters...")
     cv = LeakFreePurgedKFold(n_splits=5, pctEmbargo=0.01)
     
     X_train_full = train_df[features].values
@@ -212,20 +310,7 @@ def main():
         print(f"Inner Train samples: {len(X_tr)} | Inner Val samples: {len(X_va)}")
         print(f"Purged/Embargoed: {len(train_df) - len(X_tr) - len(X_va)}")
         
-        model = lgb.LGBMRegressor(
-            n_estimators=1000, 
-            importance_type='gain', 
-            device='gpu',
-            gpu_use_dp=True,
-            min_data_in_leaf=1000, # Increased further
-            min_sum_hessian_in_leaf=1e-1, # Increased further
-            extra_trees=True,
-            feature_fraction=0.7,
-            bagging_fraction=0.7,
-            bagging_freq=5,
-            bin_construct_sample_cnt=200000,
-            verbose=-1
-        )
+        model = lgb.LGBMRegressor(**best_params)
             
         model.fit(
             X_tr, y_tr,
@@ -247,7 +332,7 @@ def main():
         models.append(model)
         fold += 1
         
-    print("\n4. Evaluating Ensemble on Test Set...")
+    print("\n5. Evaluating Ensemble on Test Set...")
     final_score = zero_mean_r2_score(test_y, test_preds, test_w)
     
     print(f"==> KAGGLE ZERO-MEAN R2 SCORE (Test Set): {final_score:.6f}")
