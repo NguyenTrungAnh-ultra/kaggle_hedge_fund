@@ -155,20 +155,33 @@ def main():
     print(f"Final Test shape : {test_df.shape}")
 
     # Definition of features
-    exclude = ['id', 'y_target', 'weight', 'ts_index']
+    # Mở rộng danh sách loại trừ bằng các tính năng Không Dừng (Failed FracDiff)
+    blacklist = ['feature_h', 'feature_j', 'feature_l', 'feature_ah', 'feature_an', 'feature_bd', 
+                'feature_be', 'feature_bf', 'feature_bh', 'feature_bm', 'feature_bn', 'feature_bo', 
+                'feature_bq', 'feature_br', 'feature_by', 'feature_bz', 'feature_ca', 'feature_cb', 
+                'feature_cc', 'feature_cd', 'feature_bg', 'feature_bp']
+
+    exclude = ['id', 'y_target', 'weight', 'ts_index', 't1_end'] 
     features = [c for c in df.columns if c not in exclude]
     
     # Drop constant columns which can cause GPU split errors
-    print(f"Scanning {len(features)} features for constant columns...")
+    # or columns that are all 0 or all 1 (specifically flag columns).
+    print(f"Scanning {len(features)} features for constant or all-0/all-1 flag columns...")
     const_cols = []
-    for i, col in enumerate(features, 1):
-        if i % 10 == 0:
-            print(f"Progress: [{i}/{len(features)}] features scanned...")
+    for col in features:
+        # Fast check for constant columns (nunique=1 handles all-0, all-1, or any constant value)
         if df[col].nunique() <= 1:
             const_cols.append(col)
             
     if const_cols:
-        print(f"Dropping {len(const_cols)} constant columns.")
+        flag_const = [c for c in const_cols if 'is_nan' in c]
+        if flag_const:
+            print(f"Dropping {len(flag_const)} constant flag columns (all-0 or all-1).")
+        
+        other_const = [c for c in const_cols if 'is_nan' not in c]
+        if other_const:
+            print(f"Dropping {len(other_const)} other constant columns.")
+            
         features = [c for c in features if c not in const_cols]
         
     print(f"Total modeling features: {len(features)}")
@@ -201,7 +214,6 @@ def main():
         
         model = lgb.LGBMRegressor(
             n_estimators=1000, 
-            random_state=42, 
             importance_type='gain', 
             device='gpu',
             gpu_use_dp=True,
@@ -252,7 +264,7 @@ def main():
         f.write(f"Kaggle Zero-Mean R2 Score: {final_score:.6f}\n\n")
         f.write("Note: Models have been saved to 'models_param' directory.\n\n")
         f.write("Top 20 Features:\n")
-        f.write(imp_df.head(20).to_string(index=False))
+        f.write(imp_df.to_string(index=False))
         
     print(f"\nReport saved to {report_file}")
 

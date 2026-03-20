@@ -167,7 +167,6 @@ def main():
             feature_fraction=0.7,
             bagging_fraction=0.7,
             bagging_freq=5,
-            random_state=42,
             verbose=-1
         )
         

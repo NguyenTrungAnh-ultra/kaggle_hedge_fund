@@ -15,11 +15,12 @@ Hệ thống dự báo chuỗi thời gian tài chính được xây dựng dự
 ### Step 1: Xử lý dữ liệu khuyết thiếu (`01_handle_na.py`)
 Quy trình lấp đầy NaN 4 lớp:
 1. **Spatial Isolation**: Loại bỏ mã cổ phiếu quá nhiễu.
-2. **Missingness Indicator**: Gắn cờ logic `is_nan_*` cho 48 cột dữ liệu.
+2. **Missingness Indicator**: Gắn cờ logic `is_nan_*` cho 48 cột dữ liệu. (Sẽ được tự động lọc bỏ tại bước huấn luyện nếu toàn 0 hoặc toàn 1 để tối ưu hóa không gian đặc trưng).
 3. **Longitudinal F-Fill**: Điền giá trị từ quá khứ đắp sang theo từng mã cổ phiếu.
 4. **Cold-Start Median Fill**: Điền trung vị trục chéo (Cross-sectional Median) cho các mã mới xuất hiện.
 
 ### Step 2: Dừng hóa dữ liệu (`02_make_stationary.py`)
+- **Seasonal Handler (Mới)**: Tự động phát hiện và triệt tiêu tính không dừng mùa vụ bằng Dịch chuyển lùi (Seasonal Backshift) trên phân lớp Cross-sectional, tuân thủ nghiêm ngặt AFML.
 - Áp dụng **Fractional Differencing** để khử tính không dừng (Non-Stationary).
 - Tham số $d$ được ước tính chỉ dựa trên tập Train để ngăn chặn rò rỉ thông tin tương lai.
 - Sử dụng Vectorized Convolution (`np.convolve`) để xử lý 5 triệu dòng dữ liệu trong thời gian ngắn.
