@@ -4,6 +4,8 @@
 
 +luôn quét qua file trước khi phân tích, tôi có thêm vài chi tiết ảnh hướng lớn đến kết quả
 
++luôn dùng sys và os.path() để tránh lỗi đường dẫn
+
 +trong xử lí dữ liệu, áp dụng các kĩ thuật tính toán song song, gpu, async, etc. để tăng tốc độ tính toán
 
 +cho một module là một class riêng, ưu tiên khả năng debug, cleancode.

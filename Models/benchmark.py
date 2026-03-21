@@ -62,6 +62,9 @@ class LeakFreePurgedKFold:
             t0_test = test_times[0]
             t1_test = (df[df['ts_index'].isin(test_times)]['ts_index'] + df[df['ts_index'].isin(test_times)]['horizon']).max()
             
+            print(f"ts_index_arr range: {ts_index_arr.min()} to {ts_index_arr.max()}, dtype: {ts_index_arr.dtype}")
+            print(f"train_times range: {train_times.min()} to {train_times.max()}, dtype: {train_times.dtype}")
+            print(f"train_times size: {train_times.size}")
             base_train_mask = np.isin(ts_index_arr, train_times)
             test_indices = np.where(np.isin(ts_index_arr, test_times))[0]
             
@@ -97,7 +100,7 @@ def main():
 
     # User's dropna()
     print("Dropping NaNs (user's way)...")
-    df = df.dropna().reset_index(drop=True)
+    df.dropna(inplace=True).reset_index(drop=True)
     print(f"Shape after dropna: {df.shape}")
 
     # Prepare t1 (Label End Time) column
@@ -120,7 +123,7 @@ def main():
         train_df = train_df[~overlap_mask].copy().reset_index(drop=True)
 
     # Feature selection
-    exclude = ['id', 'y_target', 'weight', 'ts_index', 't1_end', 'horizon']
+    exclude = ['id', 'y_target', 'weight', 'ts_index', 't1_end']
     features = [c for c in df.columns if c not in exclude]
     
     print(f"Scanning {len(features)} features for constant columns...")
