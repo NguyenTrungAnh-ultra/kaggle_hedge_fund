@@ -3,6 +3,7 @@ import sys
 import time
 import numpy as np
 import pandas as pd
+import metric
 import polars as pl
 import torch
 import torch.nn as nn
@@ -130,11 +131,8 @@ def main():
         cutoff = pl_lazy.select("ts_index").unique().collect().get_column("ts_index").sort()[int(422 * 0.1)]
         pl_lazy = pl_lazy.filter(pl.col("ts_index") <= cutoff)
     
-    blacklist = ['feature_h', 'feature_j', 'feature_l', 'feature_ah', 'feature_an', 'feature_bd', 
-                 'feature_be', 'feature_bf', 'feature_bh', 'feature_bm', 'feature_bn', 'feature_bo', 
-                 'feature_bq', 'feature_br', 'feature_by', 'feature_bz', 'feature_ca', 'feature_cb', 
-                 'feature_cc', 'feature_cd', 'feature_bg', 'feature_bp', 'feature_cf', 'feature_z', 'feature_k', 'feature_aq']
-    exclude = ['id', 'y_target', 'weight', 'ts_index', 't1_end', 't1_arr'] + blacklist + ['code', 'sub_code', 'sub_category']
+    blacklist = []
+    exclude = ['id', 'y_target', 'weight', 'ts_index', 't1_end', 't1_arr'] 
     features = [c for c in pl_lazy.columns if c not in exclude]
     
     # Scaling Cross-Sectional in Lazy Mode

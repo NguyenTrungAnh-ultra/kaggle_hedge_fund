@@ -10,7 +10,7 @@ if PROJECT_ROOT not in sys.path:
 import pandas as pd
 import numpy as np
 import lightgbm as lgb
-from sklearn.model_selection import KFold
+from metric import weighted_rmse_score
 from sklearn.preprocessing import LabelEncoder
 import warnings
 import optuna
@@ -23,30 +23,18 @@ DATA_DIR = os.path.join(PROJECT_ROOT, 'ts-forecasting')
 if not os.path.exists(LOG_DIR):
     os.makedirs(LOG_DIR)
 
-# --- KAGGLE COMPETITION METRIC ---
-def _clip01(x: float) -> float:
-    return float(np.minimum(np.maximum(x, 0.0), 1.0))
-
-def zero_mean_r2_score(y_target, y_pred, w) -> float:
-    """
-    Standard competition metric for typical 0-mean targets (like Jane Street).
-    R2 = 1 - sum(w * (y - y_hat)^2) / sum(w * y^2)
-    No sqrt is applied.
-    """
-    denom = np.sum(w * y_target ** 2)
-    if denom == 0:
-        return 0.0
-    ratio = np.sum(w * (y_target - y_pred) ** 2) / denom
-    clipped = _clip01(ratio)
-    val = 1.0 - clipped
-    return float(val)
+def lgb_weighted_rmse(preds, dataset):
+    y_true = dataset.get_label()
+    w = dataset.get_weight()
+    score = weighted_rmse_score(y_true, preds, w)
+    return 'weighted_rmse', score, True
 
 
 def objective(trial, train_df, features):
     # Search space
     param = {
         'objective': 'regression',
-        'metric': 'l2',
+        'metric': 'None',
         'verbosity': -1,
         'boosting_type': 'gbdt',
         'device': 'gpu',
@@ -90,19 +78,26 @@ def objective(trial, train_df, features):
 
     print(f"    [Trial {trial.number}] Training with {len(X_tr)} samples, Val with {len(X_va)}...")
 
-    model = lgb.LGBMRegressor(**param)
-    model.fit(
-        X_tr, y_tr,
-        sample_weight=w_tr,
-        eval_set=[(X_va, y_va)],
-        eval_sample_weight=[w_va],
+    dtrain = lgb.Dataset(X_tr, label=y_tr, weight=w_tr)
+    dval = lgb.Dataset(X_va, label=y_va, weight=w_va, reference=dtrain)
+
+    params = param.copy()
+    num_boost_round = params.pop('n_estimators', 100)
+
+    model = lgb.train(
+        params,
+        dtrain,
+        valid_sets=[dval],
+        valid_names=['valid'],
+        feval=lgb_weighted_rmse,
+        num_boost_round=num_boost_round,
         callbacks=[lgb.early_stopping(stopping_rounds=30, verbose=False)]
     )
 
     v_preds = model.predict(X_va)
-    score = zero_mean_r2_score(y_va, v_preds, w_va)
-    print(f"    [Trial {trial.number}] Validation R2: {score:.6f}")
-    return score
+    w_score = weighted_rmse_score(y_va, v_preds, w_va)
+    print(f"    [Trial {trial.number}] Weighted RMSE: {w_score:.6f}")
+    return w_score
 
 def run_lgbm(file_path, tuning=False, training=True):
     print("1. Loading dataset...")
@@ -194,13 +189,20 @@ def run_lgbm(file_path, tuning=False, training=True):
         optuna_log_file = os.path.join(LOG_DIR, "lightgbm_train.log")
         optuna.logging.get_logger("optuna").addHandler(logging.FileHandler(optuna_log_file))
         
-        # Sample 20% of data for tuning speed
-        train_df_sample = train_df.sample(frac=0.2, random_state=42).reset_index(drop=True)
+        # Lấy danh sách các mốc thời gian duy nhất đã được sắp xếp
+        unique_ts = np.sort(train_df['ts_index'].unique())
+
+        # Lấy 20% số lượng mốc thời gian GẦN NHẤT (không phải 20% số hàng)
+        cut_off_idx = int(len(unique_ts) * 0.8)
+        cut_off_time = unique_ts[cut_off_idx]
+
+        # Lọc toàn bộ các hàng thuộc 20% khung thời gian cuối này
+        train_df_sample = train_df[train_df['ts_index'] >= cut_off_time].copy().reset_index(drop=True)
         # Ensure it's sorted by time for the split logic
         train_df_sample = train_df_sample.sort_values('ts_index').reset_index(drop=True)
         
         study = optuna.create_study(direction='maximize')
-        study.optimize(lambda trial: objective(trial, train_df_sample, features), n_trials=20)
+        study.optimize(lambda trial: objective(trial, train_df_sample, features), n_trials=5)
         
         print("\nBest trial:")
         trial = study.best_trial
@@ -239,10 +241,10 @@ def run_lgbm(file_path, tuning=False, training=True):
     # Standard system-level parameters
     best_params.update({
         'objective': 'regression',
-        'metric': 'l2',
+        'metric': 'None',
         'verbosity': -1,
         'boosting_type': 'gbdt',
-        'device': 'cpu',
+        'device': 'gpu',
         'gpu_use_dp': True,
         'importance_type': 'gain'
     })
@@ -259,7 +261,7 @@ def run_lgbm(file_path, tuning=False, training=True):
     os.makedirs(os.path.join(PROJECT_ROOT, 'models_param'), exist_ok=True)
     
     if training:
-        print("\n4. Starting Leak-Free Purged K-Fold Training with Best Parameters...")
+        print("\n\n4. Starting Leak-Free Purged K-Fold Training with Best Parameters...")
         
         X_train_full = train_df[features].values
         y_train_full = train_df['y_target'].values
@@ -274,23 +276,29 @@ def run_lgbm(file_path, tuning=False, training=True):
             
             print(f"Inner Train samples: {len(X_tr)} | Inner Val samples: {len(X_va)}")
             
-            model = lgb.LGBMRegressor(**best_params)
-                
-            model.fit(
-                X_tr, y_tr,
-                sample_weight=w_tr,
-                eval_set=[(X_va, y_va)],
-                eval_sample_weight=[w_va],
+            dtrain = lgb.Dataset(X_tr, label=y_tr, weight=w_tr)
+            dval = lgb.Dataset(X_va, label=y_va, weight=w_va, reference=dtrain)
+
+            params = best_params.copy()
+            num_boost_round = params.pop('n_estimators', 1000)
+
+            model = lgb.train(
+                params,
+                dtrain,
+                valid_sets=[dval],
+                valid_names=['valid'],
+                feval=lgb_weighted_rmse,
+                num_boost_round=num_boost_round,
                 callbacks=[lgb.early_stopping(stopping_rounds=50, verbose=False)]
             )
             
             model_filename = os.path.join(PROJECT_ROOT, "models_param", f"lgbm_fold_{fold}.txt")
-            model.booster_.save_model(model_filename)
+            model.save_model(model_filename)
             print(f"Saved model to {model_filename}")
             
             v_preds = model.predict(X_va)
-            v_score = zero_mean_r2_score(y_va, v_preds, w_va)
-            print(f"Fold {fold} Validation R2: {v_score:.5f}")
+            v_wrmse = weighted_rmse_score(y_va, v_preds, w_va)
+            print(f"Fold {fold} Weighted RMSE: {v_wrmse:.5f}")
             
             test_preds += model.predict(test_X) / cv.n_splits
             models.append(model)
@@ -309,14 +317,14 @@ def run_lgbm(file_path, tuning=False, training=True):
             models.append(model)
         
     print("\n5. Evaluating Ensemble on Test Set...")
-    final_score = zero_mean_r2_score(test_y, test_preds, test_w)
-    
-    print(f"==> KAGGLE ZERO-MEAN R2 SCORE (Test Set): {final_score:.6f}")
+    final_wrmse = weighted_rmse_score(test_y, test_preds, test_w)
+
+    print(f"==> WEIGHTED RMSE SCORE (Test Set)       : {final_wrmse:.6f}")
     
     # Feature importances
     imp_df = pd.DataFrame({'feature': features})
     if training:
-        imp_df['importance'] = np.mean([m.feature_importances_ for m in models], axis=0)
+        imp_df['importance'] = np.mean([m.feature_importance(importance_type='gain') for m in models], axis=0)
     else:
         # For Booster objects, we use feature_importance()
         imp_df['importance'] = np.mean([m.feature_importance(importance_type='gain') for m in models], axis=0)
@@ -327,7 +335,7 @@ def run_lgbm(file_path, tuning=False, training=True):
     with open(report_file, 'w') as f:
         f.write("=== FINAL TEST SET EVALUATION ===\n")
         f.write("Method: Leak-Free Purged K-Fold (Chronological Train/Test + Validation)\n")
-        f.write(f"Kaggle Zero-Mean R2 Score: {final_score:.6f}\n\n")
+        f.write(f"Weighted RMSE Score: {final_wrmse:.6f}\n\n")
         f.write("Note: Models have been saved to 'models_param' directory.\n\n")
         f.write("Top 20 Features:\n")
         f.write(imp_df.to_string(index=False))
@@ -335,6 +343,5 @@ def run_lgbm(file_path, tuning=False, training=True):
     print(f"\nReport saved to {report_file}")
 
 if __name__ == '__main__':
-    # Add training=True or False here
     file_path = os.path.join(DATA_DIR, 'train_stationary.parquet')
-    run_lgbm(file_path=file_path, training=False)
+    run_lgbm(file_path=file_path, tuning=1, training=1)
