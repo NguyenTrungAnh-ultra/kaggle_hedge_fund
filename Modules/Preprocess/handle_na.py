@@ -61,7 +61,16 @@ class NaN_Handler:
         # Lớp 5: Hậu xử lý - Loại bỏ các cột hằng số (toàn 0 hoặc toàn 1)
         # Loại bỏ các features và indicators không mang thông tin
         cols_to_check = [c for c in df.columns if c in features_list or c.startswith('is_nan_')]
-        constant_cols = [c for c in cols_to_check if df[c].nunique() <= 1]
+        blacklist = [
+        "is_nan_feature_w", "is_nan_feature_v", "is_nan_feature_p", "is_nan_feature_o",
+        "is_nan_feature_l", "is_nan_feature_m", "is_nan_feature_u", "is_nan_feature_t",
+        "is_nan_feature_s", "is_nan_feature_q", "is_nan_feature_ab", "is_nan_feature_x",
+        "is_nan_feature_au", "is_nan_feature_ak", "is_nan_feature_ah", "is_nan_feature_y",
+        "is_nan_feature_aa", "is_nan_feature_z", "is_nan_feature_ac", "is_nan_feature_av",
+        "is_nan_feature_bl", "is_nan_feature_bj", "is_nan_feature_bi", "is_nan_feature_az",
+        "is_nan_feature_ax", "is_nan_feature_cc", "is_nan_feature_bz", "is_nan_feature_ca"
+    ]
+        constant_cols = [c for c in cols_to_check if df[c].nunique() <= 1] + blacklist
         
         if constant_cols:
             print(f"Bổ sung: Đã loại bỏ {len(constant_cols)} cột hằng số (toàn 0 hoặc 1).")

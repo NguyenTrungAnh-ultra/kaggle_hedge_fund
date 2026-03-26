@@ -1,4 +1,0 @@
-=== FINAL LSTM TEST SET EVALUATION ===
-Architecture: Shallow LSTM + SpatialDropout1D
-CV Method: 3D Leak-Free Purged K-Fold
-Kaggle Zero-Mean R2 Score: 0.000000

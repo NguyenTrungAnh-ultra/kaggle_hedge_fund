@@ -15,6 +15,7 @@ from sklearn.preprocessing import LabelEncoder
 import warnings
 import optuna
 from Modules.PurgedKFold import LeakFreePurgedKFold
+from Modules.Preprocess.OutlierHandler import OutlierHandler
 
 warnings.filterwarnings('ignore')
 
@@ -109,6 +110,9 @@ def run_lgbm(file_path, tuning=False, training=True):
     df = pd.read_parquet(file_path)
     print(f"Dataset shape: {df.shape}")
 
+    # BẢO VỆ HÀM MẤT MÁT: TARGET CLIPPING (CẮT TỈA NGOẠI LAI)
+    df = OutlierHandler.clip_target(df)
+
     # Prepare t1 (Label End Time) column
     df['t1_end'] = df['ts_index'] + df['horizon']
     
@@ -155,9 +159,8 @@ def run_lgbm(file_path, tuning=False, training=True):
 
     # Definition of features
     # Mở rộng danh sách loại trừ bằng các tính năng Không Dừng (Failed FracDiff)
-    blacklist = ['feature_k', 'feature_aq']
 
-    exclude = ['id', 'y_target', 'weight', 'ts_index', 't1_end'] + blacklist
+    exclude = ['id', 'y_target', 'weight', 'ts_index', 't1_end']
     features = [c for c in df.columns if c not in exclude]
     
     # Drop constant columns which can cause GPU split errors
@@ -202,7 +205,7 @@ def run_lgbm(file_path, tuning=False, training=True):
         train_df_sample = train_df_sample.sort_values('ts_index').reset_index(drop=True)
         
         study = optuna.create_study(direction='maximize')
-        study.optimize(lambda trial: objective(trial, train_df_sample, features), n_trials=5)
+        study.optimize(lambda trial: objective(trial, train_df_sample, features), n_trials=20)
         
         print("\nBest trial:")
         trial = study.best_trial
@@ -330,7 +333,7 @@ def run_lgbm(file_path, tuning=False, training=True):
         imp_df['importance'] = np.mean([m.feature_importance(importance_type='gain') for m in models], axis=0)
     imp_df = imp_df.sort_values(by='importance', ascending=False)
     
-    report_file = os.path.join(LOG_DIR, 'reports', 'test_evaluation_report.txt')
+    report_file = os.path.join(LOG_DIR, 'reports', 'feature_important.txt')
     os.makedirs(os.path.dirname(report_file), exist_ok=True)
     with open(report_file, 'w') as f:
         f.write("=== FINAL TEST SET EVALUATION ===\n")
@@ -344,4 +347,4 @@ def run_lgbm(file_path, tuning=False, training=True):
 
 if __name__ == '__main__':
     file_path = os.path.join(DATA_DIR, 'train_stationary.parquet')
-    run_lgbm(file_path=file_path, tuning=1, training=1)
+    run_lgbm(file_path=file_path, tuning=0, training=1)

@@ -8,6 +8,7 @@ import time
 import warnings
 import json
 from Modules.PurgedKFold import LeakFreePurgedKFold
+from Modules.Preprocess.OutlierHandler import OutlierHandler
 
 warnings.filterwarnings('ignore')
 
@@ -54,6 +55,9 @@ def main(retrain=False):
 
     # BÂY GIỜ mới tiến hành tách dữ liệu
     train_only = df[df['is_test'] == 0].copy()
+
+    # BẢO VỆ HÀM MẤT MÁT: TARGET CLIPPING (CẮT TỈA NGOẠI LAI)
+    train_only = OutlierHandler.clip_target(train_only)
     
     print("   Isolating Test Frame for Inference...")
     df = df.sort_values(['ts_index', 'code', 'sub_code', 'horizon']).reset_index(drop=True)
@@ -61,8 +65,8 @@ def main(retrain=False):
     del df # Giải phóng bộ nhớ RAM
             
     print("\n4. Feature Selection & Model Deployment...")
-    blacklist = ['feature_k', 'feature_aq']
-    exclude = ['id', 'y_target', 'weight', 'ts_index', 'is_test', 't1_end'] + blacklist
+    categorical_identifiers = ['code', 'sub_code', 'sub_category']
+    exclude = ['id', 'y_target', 'weight', 'ts_index', 'is_test', 't1_end'] + categorical_identifiers
     features = [c for c in train_only.columns if c not in exclude]
     
     # Drop constant columns

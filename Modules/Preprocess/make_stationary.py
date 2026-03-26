@@ -206,9 +206,24 @@ class Fractional_Differencer:
         for idx, col in enumerate(features_list, 1):
             start_col = time.time()
             
-            # Ước tính d tối ưu trên series của group tiêu biểu (toàn bộ thời gian)
-            test_series = df.loc[test_idx, col]
+            # 3. Tính toán trọng số và áp dụng cho từng cột
+        for idx, col in enumerate(features_list, 1):
+            start_col = time.time()
+            
+            # --- FIX DATA LEAKAGE ---
+            # Chỉ ước tính d_opt trên phần dữ liệu thuộc tập Train (is_test == 0)
+            if 'is_test' in df.columns:
+                train_idx = df[(df['code'] == top_group_keys[0]) & 
+                               (df['sub_code'] == top_group_keys[1]) & 
+                               (df['horizon'] == top_group_keys[2]) &
+                               (df['is_test'] == 0)].index
+                test_series = df.loc[train_idx, col]
+            else:
+                # Fallback nếu đang chạy độc lập trên tập Train
+                test_series = df.loc[test_idx, col]
+                
             opt_d = self.find_optimal_d(test_series)
+            # ------------------------
             
             print(f"[{idx}/{len(features_list)}] {col:15} | d_opt: {opt_d:.1f} ", end='', flush=True)
             

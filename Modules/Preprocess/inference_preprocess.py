@@ -10,9 +10,11 @@ import numpy as np
 try:
     from Modules.Preprocess.handle_na import NaN_Handler
     from Modules.Preprocess.make_stationary import Fractional_Differencer
+    from Modules.Preprocess.feature_builder import AlphaGenerator
 except ImportError:
     from handle_na import NaN_Handler
     from make_stationary import Fractional_Differencer
+    from feature_builder import AlphaGenerator
 
 class InferencePreprocess:
     """
@@ -73,8 +75,14 @@ class InferencePreprocess:
             # Xử lý Stationarity sử dụng class Fractional_Differencer đã được tối ưu
             diff_handler = Fractional_Differencer()
             df = diff_handler.process(df, cols_to_fix)
+        # 7. AlphaGenerator
+        print("4. Bắt đầu tạo Alpha Features (Lags & Z-Score)...")
+        alpha_gen = AlphaGenerator()
+        df = alpha_gen.inject_lagged_momentum(df)
+        df = alpha_gen.inject_cross_sectional_zscore(df)
+        gc.collect()
         
-        # 7. Final Sorting for Time-Series logic
+        # 8. Final Sorting for Time-Series logic
         print("4. Sắp xếp dữ liệu và xuất file...")
         df.sort_values(['code', 'sub_code', 'horizon', 'ts_index'], inplace=True)
         df.reset_index(drop=True, inplace=True)

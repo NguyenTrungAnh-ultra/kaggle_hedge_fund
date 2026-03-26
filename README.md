@@ -3,63 +3,64 @@
 Hệ thống dự báo chuỗi thời gian tài chính được xây dựng dựa trên các tiêu chuẩn **Advanced Machine Learning in Finance (AFML)** của Marcos López de Prado.
 
 ## 🚀 Điểm nhấn Kỹ thuật (Key Highlights)
-- **AFML Compliance**: Chống rò rỉ dữ liệu (No Data Leakage) tuyệt đối.
+
+- **AFML Compliance**: Chống rò rỉ dữ liệu (No Data Leakage) tuyệt đối. Các tham số được ước lượng chỉ dựa trên 80% thời gian đầu của tập Train.
+- **Unified Pipeline**: Tiền xử lý hợp nhất Train/Test để đảm bảo tính liên tục của bộ nhớ (Memory Preservation) cho các phép toán chuỗi thời gian.
 - **Fractional Differencing (FFW)**: Giữ lại "bộ nhớ" chuỗi thời gian trong khi vẫn đạt tính dừng (Stationarity).
-- **Purged K-Fold CV**: Chia tập dữ liệu khắt khe, loại bỏ nhiễu tại các ranh giới thời gian.
-- **Weighted RMSE Metric**: Tối ưu trực tiếp theo hàm chấm điểm của Kaggle.
+- **Alpha Injection**: Cấy ghép Trí nhớ Trục dọc (Lags) và Sức mạnh Trục ngang (Sector-Neutral Z-Score) để tách Alpha khỏi Beta thị trường.
+- **Quant Security (Clipping)**: Bảo vệ hàm mất mát bằng Target Clipping (0.01 - 0.99) để triệt tiêu nhiễu từ các Fat-Tails.
 
 ---
 
-## 🏗️ Cấu trúc Pipeline
+## 🏗️ Kiến trúc các Modules (`Modules/Preprocess/`)
 
-### Step 1: Xử lý dữ liệu khuyết thiếu (`Modules/Preprocess/handle_na.py`)
-Quy trình lấp đầy NaN 4 lớp:
-1. **Spatial Isolation**: Loại bỏ mã cổ phiếu quá nhiễu.
-2. **Missingness Indicator**: Gắn cờ logic `is_nan_*` cho 48 cột dữ liệu. (Sẽ được tự động lọc bỏ tại bước huấn luyện nếu toàn 0 hoặc toàn 1 để tối ưu hóa không gian đặc trưng).
-3. **Longitudinal F-Fill**: Điền giá trị từ quá khứ đắp sang theo từng mã cổ phiếu.
-4. **Cold-Start Median Fill**: Điền trung vị trục chéo (Cross-sectional Median) cho các mã mới xuất hiện.
+### 1. `handle_na.py` (NaN Handler - 5 Lớp Bảo vệ)
+Quy trình phục hồi dữ liệu khuyết thiếu khép kín:
+- **Layer 1: Analysis**: Phân tích tỷ lệ trống ban đầu.
+- **Layer 2: Missingness Indicator**: Gắn cờ `is_nan_*` cho các cột quan trọng.
+- **Layer 3: Longitudinal Forward Fill**: Điền giá trị từ quá khứ (ffill) theo từng nhóm `code` + `horizon` (giới hạn 50 bước).
+- **Layer 4: Cold-Start Median Fill**: Điền Trung vị trục chéo (Cross-sectional Median) cho các mã mới xuất hiện hoặc thiếu lịch sử.
+- **Layer 5: Feature Purging**: Loại bỏ các cột hằng số và danh sách đen (Blacklist) các features nhiễu cao.
 
-### Step 2: Dừng hóa dữ liệu (`Modules/Preprocess/make_stationary.py`)
-- **Seasonal Handler (Mới)**: Tự động phát hiện và triệt tiêu tính không dừng mùa vụ bằng Dịch chuyển lùi (Seasonal Backshift) trên phân lớp Cross-sectional, tuân thủ nghiêm ngặt AFML.
-- Áp dụng **Fractional Differencing** để khử tính không dừng (Non-Stationary).
-- Tham số $d$ được ước tính chỉ dựa trên tập Train để ngăn chặn rò rỉ thông tin tương lai.
-- Sử dụng Vectorized Convolution (`np.convolve`) để xử lý 5 triệu dòng dữ liệu trong thời gian ngắn.
+### 2. `make_stationary.py` (Stationarity Suite)
+- **Fractional Differencing (FFW)**: Sử dụng cửa sổ động (Fixed-Width Window) và tích chập (`np.convolve`) để xử lý dữ liệu lớn. Tự động tìm tham số $d$ tối ưu cho từng đặc trưng.
+- **Seasonal Handler**: (Sẵn sàng) Module triệt tiêu tính không dừng mùa vụ bằng Seasonal Backshift.
 
-### Step 3: Huấn luyện mô hình Hybrid (`07_afml_hybrid.py`)
-- **CV Strategy**: Purged K-Fold (5 Folds) + Embargo.
-- **Model**: LightGBM GBDT (`num_leaves=30`, `max_depth=8`).
-- **Metric**: Weighted RMSE (Kaggle Score with `sqrt`).
-- **Hybrid Approach**: Kết hợp tính ổn định của AFML với sự nhạy bén của tham số từ Notebook thực chiến.
+### 3. `feature_builder.py` (Alpha Generator)
+- **Lagged Momentum**: Tạo 20 đặc trưng trễ (1, 3, 5, 10, 25) cho các cột Core Features.
+- **Sector-Neutral Z-Score**: Chuẩn hóa Z-Score chéo giữa các mã trong cùng một nhóm ngành (`sub_category`). Giúp mô hình tập trung vào "Sức mạnh tương đối" hơn là giá trị tuyệt đối.
 
-### Step 4: Huấn luyện Ensemble (`06_train_ensemble.py`)
-- **Trạng thái**: Đang huấn luyện (Giai đoạn cuối: Đã xong Tuning XGB/Cat, đang chạy MLP & Final Training).
-- **GPU**: RTX 5060 Utilization ~90-95% (Hoạt động ổn định).
-- **Tỉ lệ Tuning**: 30% sample (Gần 1.5 triệu dòng).
-- **Kết quả Tuning**:
-  - *Best XGB*: `n_estimators: 563, max_depth: 4, lr: 0.02`
-  - *Best Cat*: `iterations: 451, depth: 6, lr: 0.06`
-  - *Best MLP*: `hidden_dim: 128, lr: 0.0009, dropout: 0.44`
-- **Stability**: Đã khắc phục lỗi `ValueError` (String conversion) bằng LabelEncoding.
-
-### Step 5: Dự báo Ensemble & Nộp bài (`07_submit_ensemble.py`)
-- **Weighted Average**: Kết hợp dự báo từ 3 mô hình theo trọng số hiệu năng thực tế.
-- **AFML Memory Preservation**: Giữ nguyên cơ chế FFW và ffill để đảm bảo tính nhất quán giữa Train và Test.
+### 4. `OutlierHandler.py` (Model Protection)
+- **Target Clipping**: Ép giá trị `y_target` vào khoảng phân vị [1%, 99%] để tránh tối ưu sai lệch do các cú sốc thị trường ngắn hạn.
 
 ---
 
-## 📈 Kết quả đạt được (Current Performance)
+## ⚙️ Quy trình thực thi (Execution Roadmap)
 
-| Metric | Kết quả (Bản Hybrid) |
-| :--- | :--- |
-| **Kaggle Final Score (Weighted RMSE)** | **0.1625** |
-| **Test Zero-Mean R2** | **0.0264** |
+### Luồng 1: Tiền xử lý Hợp nhất (Phòng chống Leakage)
+Sử dụng script điều phối: `Modules/Preprocess/inference_preprocess.py`
+- Tự động nạp Train + Test đồng thời.
+- Chạy chuỗi: **NaN Handler** -> **FracDiff** -> **Alpha Generator**.
+- Xuất file: `ts-forecasting/inference_processed_full.parquet`.
+
+### Luồng 2: Huấn luyện mô hình (`Models/lightgbm.py`)
+- Sử dụng **Purged K-Fold CV** (5 Folds) có Embargo.
+- Tự động tối ưu tham số bằng **Optuna** trên 20% khung thời gian cuối.
+- Model được lưu tại `models_param/`.
+
+### Luồng 3: Suy luận & Nộp bài (`FINAL_submit.py`)
+- Nạp dữ liệu đã xử lý từ Step 1.
+- Thực hiện **Transductive Encoding** (LabelEncoder trên 100% dữ liệu).
+- **Exponential Time-Decay Ensemble**: Kết hợp dự báo từ 5 model folds với trọng số giảm dần theo độ cũ của dữ liệu.
 
 ---
 
-## 🛠️ Hướng dẫn cài đặt
-1. Tạo môi trường ảo: `python -m venv .venv`
-2. Cài đặt thư viện: `pip install -r requirements.txt`
-3. Chạy theo thứ tự các file script `handle_na.py` -> `make_stationary.py` -> `07` -> `05`.
+## 🛠️ Hướng dẫn cài đặt & Chạy nhanh
+
+1. `pip install -r requirements.txt`
+2. Tạo dữ liệu Inference: `python Modules/Preprocess/inference_preprocess.py`
+3. Training (Nếu cần): `python Models/lightgbm.py` (Set `training=True`)
+4. Tạo file submission: `python FINAL_submit.py`
 
 ---
-*Dự án được phát triển bởi sự kết hợp giữa tư duy định lượng AFML và kỹ thuật thực chiến Kaggle.*
+_Cấu trúc được tối ưu cho hiệu năng xử lý dữ liệu 5M+ dòng trên CPU/GPU thông thường._
