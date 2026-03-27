@@ -1,0 +1,238 @@
+1. Loading dataset...
+Dataset shape: (2006057, 114)
+Label Encoding: code
+Label Encoding: sub_code
+Label Encoding: sub_category
+
+2. Splitting Hold-out Test (Chronological 80/20)...
+Purging 5562 leaking samples from Train overlapping the Test set...
+Final Train shape: (1558549, 115)
+Final Test shape : (441946, 115)
+Scanning 106 features for constant or all-0/all-1 flag columns...
+Total modeling features: 106
+
+3. Starting Optuna Hyperparameter Tuning (using 20% sample + Single Split for extreme speed)...
+[I 2026-03-27 19:40:24,280] A new study created in memory with name: no-name-1095da5a-c4e1-4bcb-b323-ce0a1cd51ea5
+    [Trial 0] Training with 299132 samples, Val with 66510...
+    [Trial 0] Weighted RMSE: 0.000000
+[I 2026-03-27 19:40:25,896] Trial 0 finished with value: 0.0 and parameters: {'learning_rate': 0.00596622471797926, 'max_depth': 4, 'num_leaves': 47, 'min_data_in_leaf': 3414, 'lambda_l1': 0.004712373922575882, 'lambda_l2': 0.11321052856429246, 'min_sum_hessian_in_leaf': 0.7614994129253249, 'feature_fraction': 0.44286205212569346, 'bagging_fraction': 0.7314415414097744, 'bagging_freq': 4, 'extra_trees': True}. Best is trial 0 with value: 0.0.        
+    [Trial 1] Training with 299132 samples, Val with 66510...
+    [Trial 1] Weighted RMSE: 0.000000
+[I 2026-03-27 19:40:27,506] Trial 1 finished with value: 0.0 and parameters: {'learning_rate': 0.006443186007877563, 'max_depth': 6, 'num_leaves': 31, 'min_data_in_leaf': 3650, 'lambda_l1': 0.009803239653729475, 'lambda_l2': 2.121730763942246, 'min_sum_hessian_in_leaf': 0.010256568807592799, 'feature_fraction': 0.5071767538681266, 'bagging_fraction': 0.6277626104390533, 'bagging_freq': 1, 'extra_trees': True}. Best is trial 0 with value: 0.0.        
+    [Trial 2] Training with 299132 samples, Val with 66510...
+    [Trial 2] Weighted RMSE: 0.000000
+[I 2026-03-27 19:40:29,019] Trial 2 finished with value: 0.0 and parameters: {'learning_rate': 0.007539956706768945, 'max_depth': 5, 'num_leaves': 46, 'min_data_in_leaf': 3610, 'lambda_l1': 0.8194467395422699, 'lambda_l2': 0.14926884221663603, 'min_sum_hessian_in_leaf': 4.4951179520588544, 'feature_fraction': 0.7509036023519802, 'bagging_fraction': 0.5353437591400216, 'bagging_freq': 5, 'extra_trees': False}. Best is trial 0 with value: 0.0.
+    [Trial 3] Training with 299132 samples, Val with 66510...
+    [Trial 3] Weighted RMSE: 0.012303
+[I 2026-03-27 19:40:31,019] Trial 3 finished with value: 0.012302751440619627 and parameters: {'learning_rate': 0.015336526410953672, 'max_depth': 6, 'num_leaves': 23, 'min_data_in_leaf': 2077, 'lambda_l1': 1.5432282293647002, 'lambda_l2': 36.61423921569476, 'min_sum_hessian_in_leaf': 3.5086914654893677, 'feature_fraction': 0.7494351548682379, 'bagging_fraction': 0.7771630489619766, 'bagging_freq': 4, 'extra_trees': True}. Best is trial 3 with value: 0.012302751440619627.
+    [Trial 4] Training with 299132 samples, Val with 66510...
+    [Trial 4] Weighted RMSE: 0.002614
+[I 2026-03-27 19:40:32,937] Trial 4 finished with value: 0.0026142940034424218 and parameters: {'learning_rate': 0.007642511840528255, 'max_depth': 4, 'num_leaves': 51, 'min_data_in_leaf': 1360, 'lambda_l1': 0.44889583912087544, 'lambda_l2': 0.9526500763130259, 'min_sum_hessian_in_leaf': 0.003887311558254862, 'feature_fraction': 0.49870828683584323, 'bagging_fraction': 0.67760010877651, 'bagging_freq': 3, 'extra_trees': False}. Best is trial 3 with value: 0.012302751440619627.
+    [Trial 5] Training with 299132 samples, Val with 66510...
+    [Trial 5] Weighted RMSE: 0.000000
+[I 2026-03-27 19:40:34,454] Trial 5 finished with value: 0.0 and parameters: {'learning_rate': 0.005538602084282038, 'max_depth': 6, 'num_leaves': 21, 'min_data_in_leaf': 3590, 'lambda_l1': 0.022954221896609586, 'lambda_l2': 0.4314745277145876, 'min_sum_hessian_in_leaf': 0.0378145189320567, 'feature_fraction': 0.407986585185171, 'bagging_fraction': 0.6121998737070922, 'bagging_freq': 2, 'extra_trees': True}. Best is trial 3 with value: 0.012302751440619627.
+    [Trial 6] Training with 299132 samples, Val with 66510...
+    [Trial 6] Weighted RMSE: 0.000000
+[I 2026-03-27 19:40:35,964] Trial 6 finished with value: 0.0 and parameters: {'learning_rate': 0.012276315715117895, 'max_depth': 5, 'num_leaves': 31, 'min_data_in_leaf': 2865, 'lambda_l1': 0.006455106898909089, 'lambda_l2': 19.33177301962787, 'min_sum_hessian_in_leaf': 1.5648989055542168, 'feature_fraction': 0.5921908557732427, 'bagging_fraction': 0.6247628651849083, 'bagging_freq': 4, 'extra_trees': True}. Best is trial 3 with value: 0.012302751440619627.
+    [Trial 7] Training with 299132 samples, Val with 66510...
+    [Trial 7] Weighted RMSE: 0.000000
+[I 2026-03-27 19:40:37,539] Trial 7 finished with value: 0.0 and parameters: {'learning_rate': 0.02400234462746016, 'max_depth': 5, 'num_leaves': 56, 'min_data_in_leaf': 2720, 'lambda_l1': 0.022660543650281386, 'lambda_l2': 33.01295638674758, 'min_sum_hessian_in_leaf': 0.5865888896541076, 'feature_fraction': 0.4813746082602079, 'bagging_fraction': 0.6085734399109801, 'bagging_freq': 3, 'extra_trees': True}. Best is trial 3 with value: 0.012302751440619627.
+    [Trial 8] Training with 299132 samples, Val with 66510...
+    [Trial 8] Weighted RMSE: 0.006792
+[I 2026-03-27 19:40:39,117] Trial 8 finished with value: 0.00679150181480105 and parameters: {'learning_rate': 0.0418258030195369, 'max_depth': 5, 'num_leaves': 33, 'min_data_in_leaf': 1545, 'lambda_l1': 0.01573627902715874, 'lambda_l2': 2.178079275008638, 'min_sum_hessian_in_leaf': 0.2675795465608087, 'feature_fraction': 0.42872541328362646, 'bagging_fraction': 0.5368346364105614, 'bagging_freq': 1, 'extra_trees': False}. Best is trial 3 with value: 0.012302751440619627.
+    [Trial 9] Training with 299132 samples, Val with 66510...
+    [Trial 9] Weighted RMSE: 0.000000
+[I 2026-03-27 19:40:40,593] Trial 9 finished with value: 0.0 and parameters: {'learning_rate': 0.025394125433169143, 'max_depth': 4, 'num_leaves': 29, 'min_data_in_leaf': 1445, 'lambda_l1': 0.004640336970016774, 'lambda_l2': 0.40409150352730283, 'min_sum_hessian_in_leaf': 0.0036325928408340114, 'feature_fraction': 0.45446291872437916, 'bagging_fraction': 0.6996722303506495, 'bagging_freq': 1, 'extra_trees': True}. Best is trial 3 with value: 0.012302751440619627.
+    [Trial 10] Training with 299132 samples, Val with 66510...
+    [Trial 10] Weighted RMSE: 0.000000
+[I 2026-03-27 19:40:42,184] Trial 10 finished with value: 0.0 and parameters: {'learning_rate': 0.013062178413517228, 'max_depth': 3, 'num_leaves': 16, 'min_data_in_leaf': 4527, 'lambda_l1': 9.746812942287512, 'lambda_l2': 10.173829679418589, 'min_sum_hessian_in_leaf': 8.257816865672568, 'feature_fraction': 0.7960555881043686, 'bagging_fraction': 0.833830651544059, 'bagging_freq': 5, 'extra_trees': False}. Best is trial 3 with value: 0.012302751440619627.
+    [Trial 11] Training with 299132 samples, Val with 66510...
+    [Trial 11] Weighted RMSE: 0.000000
+[I 2026-03-27 19:40:43,920] Trial 11 finished with value: 0.0 and parameters: {'learning_rate': 0.046579257622815715, 'max_depth': 6, 'num_leaves': 37, 'min_data_in_leaf': 2127, 'lambda_l1': 0.16496813132635219, 'lambda_l2': 5.6243041463167875, 'min_sum_hessian_in_leaf': 0.11128667478967813, 'feature_fraction': 0.6868512215206667, 'bagging_fraction': 0.8184745610127266, 'bagging_freq': 2, 'extra_trees': False}. Best is trial 3 with value: 0.012302751440619627.
+    [Trial 12] Training with 299132 samples, Val with 66510...
+    [Trial 12] Weighted RMSE: 0.012605
+[I 2026-03-27 19:40:45,442] Trial 12 finished with value: 0.012605088035856681 and parameters: {'learning_rate': 0.04505154829594089, 'max_depth': 6, 'num_leaves': 23, 'min_data_in_leaf': 2011, 'lambda_l1': 8.858175429477438, 'lambda_l2': 3.96355330280372, 'min_sum_hessian_in_leaf': 0.16048567594830912, 'feature_fraction': 0.5989666097004984, 'bagging_fraction': 0.5003004382500001, 'bagging_freq': 4, 'extra_trees': False}. Best is trial 12 with value: 0.012605088035856681.
+    [Trial 13] Training with 299132 samples, Val with 66510...
+    [Trial 13] Weighted RMSE: 0.008266
+[I 2026-03-27 19:40:47,172] Trial 13 finished with value: 0.00826561301475438 and parameters: {'learning_rate': 0.020673864401153277, 'max_depth': 6, 'num_leaves': 23, 'min_data_in_leaf': 2243, 'lambda_l1': 7.253197336279156, 'lambda_l2': 44.59700997154681, 'min_sum_hessian_in_leaf': 0.03863551396368456, 'feature_fraction': 0.6013644722995017, 'bagging_fraction': 0.7714689252395324, 'bagging_freq': 4, 'extra_trees': False}. Best is trial 12 with value: 0.012605088035856681.
+    [Trial 14] Training with 299132 samples, Val with 66510...
+    [Trial 14] Weighted RMSE: 0.009306
+[I 2026-03-27 19:40:49,036] Trial 14 finished with value: 0.009306479738842487 and parameters: {'learning_rate': 0.031028139321082376, 'max_depth': 6, 'num_leaves': 15, 'min_data_in_leaf': 2142, 'lambda_l1': 2.6454071649054547, 'lambda_l2': 7.704888080427603, 'min_sum_hessian_in_leaf': 2.534897858338301, 'feature_fraction': 0.640240604079498, 'bagging_fraction': 0.7889215207349817, 'bagging_freq': 4, 'extra_trees': True}. Best is trial 12 with value: 0.012605088035856681.
+    [Trial 15] Training with 299132 samples, Val with 66510...
+    [Trial 15] Weighted RMSE: 0.000000
+[I 2026-03-27 19:40:50,590] Trial 15 finished with value: 0.0 and parameters: {'learning_rate': 0.0177556666308442, 'max_depth': 3, 'num_leaves': 63, 'min_data_in_leaf': 1868, 'lambda_l1': 1.7998027337640736, 'lambda_l2': 4.47780492759764, 'min_sum_hessian_in_leaf': 0.15961485576776532, 'feature_fraction': 0.5535478457095878, 'bagging_fraction': 0.8640847133941899, 'bagging_freq': 5, 'extra_trees': False}. Best is trial 12 with value: 0.012605088035856681.
+    [Trial 16] Training with 299132 samples, Val with 66510...
+    [Trial 16] Weighted RMSE: 0.009883
+[I 2026-03-27 19:40:53,173] Trial 16 finished with value: 0.009883361225721561 and parameters: {'learning_rate': 0.010386421590546568, 'max_depth': 6, 'num_leaves': 24, 'min_data_in_leaf': 1058, 'lambda_l1': 0.11680682963609398, 'lambda_l2': 16.456007273807078, 'min_sum_hessian_in_leaf': 0.03612861684259123, 'feature_fraction': 0.693209040988963, 'bagging_fraction': 0.8915360924727799, 'bagging_freq': 3, 'extra_trees': True}. Best is trial 12 with value: 0.012605088035856681.
+    [Trial 17] Training with 299132 samples, Val with 66510...
+    [Trial 17] Weighted RMSE: 0.008184
+[I 2026-03-27 19:40:54,503] Trial 17 finished with value: 0.008183918613530189 and parameters: {'learning_rate': 0.03696004764289344, 'max_depth': 5, 'num_leaves': 39, 'min_data_in_leaf': 2624, 'lambda_l1': 3.5190591905266633, 'lambda_l2': 3.3992499927420314, 'min_sum_hessian_in_leaf': 0.0011117364910157373, 'feature_fraction': 0.6905704714589, 'bagging_fraction': 0.7442068867084857, 'bagging_freq': 4, 'extra_trees': False}. Best is trial 12 with value: 0.012605088035856681.
+    [Trial 18] Training with 299132 samples, Val with 66510...
+    [Trial 18] Weighted RMSE: 0.000000
+[I 2026-03-27 19:40:56,261] Trial 18 finished with value: 0.0 and parameters: {'learning_rate': 0.018004968743982965, 'max_depth': 6, 'num_leaves': 27, 'min_data_in_leaf': 4915, 'lambda_l1': 0.6260979865915347, 'lambda_l2': 1.027452013690321, 'min_sum_hessian_in_leaf': 0.43646607647166935, 'feature_fraction': 0.7373681215601168, 'bagging_fraction': 0.6647384755299119, 'bagging_freq': 2, 'extra_trees': True}. Best is trial 12 with value: 0.012605088035856681.
+    [Trial 19] Training with 299132 samples, Val with 66510...
+    [Trial 19] Weighted RMSE: 0.000000
+[I 2026-03-27 19:40:57,673] Trial 19 finished with value: 0.0 and parameters: {'learning_rate': 0.03166170236551132, 'max_depth': 5, 'num_leaves': 19, 'min_data_in_leaf': 3166, 'lambda_l1': 1.3365981467126757, 'lambda_l2': 16.42974704019388, 'min_sum_hessian_in_leaf': 1.1395147885823227, 'feature_fraction': 0.6340610197092188, 'bagging_fraction': 0.5018087211523765, 'bagging_freq': 3, 'extra_trees': False}. Best is trial 12 with value: 0.012605088035856681.
+
+Best trial:
+  Value: 0.012605088035856681
+  Params:
+    learning_rate: 0.04505154829594089
+    max_depth: 6
+    num_leaves: 23
+    min_data_in_leaf: 2011
+    lambda_l1: 8.858175429477438
+    lambda_l2: 3.96355330280372
+    min_sum_hessian_in_leaf: 0.16048567594830912
+    feature_fraction: 0.5989666097004984
+    bagging_fraction: 0.5003004382500001
+    bagging_freq: 4
+    extra_trees: False
+
+Best parameters saved to f:\Projects\hege_fund_kaggle\models_param\lgb_best_param.json
+
+
+4. Starting Leak-Free Purged K-Fold Training with Best Parameters...
+
+--- Fold 1 ---
+Inner Train samples: 1321643 | Inner Val samples: 214033
+Saved model to f:\Projects\hege_fund_kaggle\models_param\lgbm_fold_1.txt
+Fold 1 Weighted RMSE: 0.11454
+
+--- Fold 2 ---
+Inner Train samples: 1232868 | Inner Val samples: 290413
+Saved model to f:\Projects\hege_fund_kaggle\models_param\lgbm_fold_2.txt
+Fold 2 Weighted RMSE: 0.07670
+
+--- Fold 3 ---
+Inner Train samples: 1196190 | Inner Val samples: 328335
+Saved model to f:\Projects\hege_fund_kaggle\models_param\lgbm_fold_3.txt
+Fold 3 Weighted RMSE: 0.05657
+
+--- Fold 4 ---
+Inner Train samples: 1162979 | Inner Val samples: 355821
+Saved model to f:\Projects\hege_fund_kaggle\models_param\lgbm_fold_4.txt
+Fold 4 Weighted RMSE: 0.05569
+
+--- Fold 5 ---
+Inner Train samples: 1183173 | Inner Val samples: 369947
+Saved model to f:\Projects\hege_fund_kaggle\models_param\lgbm_fold_5.txt
+Fold 5 Weighted RMSE: 0.04331
+
+5. Evaluating Ensemble on Test Set...
+==> WEIGHTED RMSE SCORE (Test Set)       : 0.050146
+
+=== FINAL TEST SET EVALUATION ===
+Method: Leak-Free Purged K-Fold (Chronological Train/Test + Validation)
+Weighted RMSE Score: 0.050146
+
+Note: Models have been saved to 'models_param' directory.
+
+Top 20 Features:
+          feature   importance
+       feature_al 1.643725e+06
+       feature_aq 5.730811e+05
+       feature_cf 5.359482e+05
+       feature_cg 4.744044e+05
+        feature_v 4.730617e+05
+        feature_u 4.544223e+05
+        feature_h 4.248574e+05
+       feature_af 3.974124e+05
+        feature_a 3.852996e+05
+        feature_m 3.786060e+05
+        feature_i 3.139686e+05
+        feature_k 2.943608e+05
+        feature_j 2.510514e+05
+       feature_aj 2.366943e+05
+       feature_cb 2.227360e+05
+       feature_ce 2.168035e+05
+       feature_ad 2.163328e+05
+        feature_r 2.003555e+05
+       feature_ch 1.825054e+05
+       feature_ar 1.760450e+05
+        feature_z 1.635080e+05
+       feature_am 1.597188e+05
+       feature_an 1.493415e+05
+       feature_bx 1.371698e+05
+        feature_y 1.332001e+05
+       feature_bn 1.310786e+05
+       feature_ao 1.241968e+05
+       feature_bz 1.200688e+05
+       feature_bg 1.199866e+05
+       feature_as 1.103239e+05
+       feature_bw 1.076121e+05
+       feature_ai 1.057239e+05
+       feature_bq 1.035941e+05
+        feature_n 9.904564e+04
+       feature_be 8.698277e+04
+       feature_bm 8.666802e+04
+       feature_bo 8.579076e+04
+       feature_cc 8.514011e+04
+       feature_at 8.196921e+04
+       feature_bl 8.164730e+04
+       feature_ah 7.884992e+04
+       feature_bj 7.789369e+04
+       feature_bd 7.785024e+04
+       feature_az 7.631559e+04
+       feature_bp 7.415884e+04
+       feature_bt 6.835059e+04
+       feature_bh 6.749998e+04
+       feature_by 6.461296e+04
+       feature_bs 6.030507e+04
+       feature_ae 5.720248e+04
+       feature_bu 5.619867e+04
+        feature_q 5.427592e+04
+       feature_ac 5.322088e+04
+       feature_ak 5.297855e+04
+        feature_x 5.061768e+04
+       feature_cd 5.012080e+04
+        feature_t 4.951587e+04
+       feature_ag 4.800766e+04
+       feature_bf 4.679878e+04
+       feature_bk 4.678151e+04
+       feature_bb 4.604224e+04
+       feature_aw 4.573083e+04
+       feature_ca 4.169334e+04
+       feature_ay 4.077672e+04
+       feature_av 3.960259e+04
+       feature_ax 3.865647e+04
+       feature_bv 3.807020e+04
+       feature_au 3.250131e+04
+       feature_ab 3.163136e+04
+        feature_p 2.980526e+04
+       feature_ap 2.975673e+04
+       feature_br 2.970836e+04
+       feature_ba 2.599151e+04
+        feature_l 2.404039e+04
+       feature_aa 2.283209e+04
+        feature_s 2.183510e+04
+       feature_bi 2.154888e+04
+        feature_w 2.018805e+04
+        feature_o 1.847651e+04
+       feature_bc 1.619486e+04
+        feature_g 1.327284e+04
+        feature_c 9.846407e+03
+        feature_b 9.639054e+03
+        feature_d 9.522184e+03
+        feature_f 9.269881e+03
+        feature_e 8.266964e+03
+is_nan_feature_cf 6.392278e+03
+is_nan_feature_ce 2.413516e+03
+is_nan_feature_at 1.487346e+03
+is_nan_feature_by 9.123160e+02
+ is_nan_feature_k 0.000000e+00
+ is_nan_feature_j 0.000000e+00
+ is_nan_feature_i 0.000000e+00
+ is_nan_feature_h 0.000000e+00
+ is_nan_feature_n 0.000000e+00
+ is_nan_feature_r 0.000000e+00
+is_nan_feature_ad 0.000000e+00
+is_nan_feature_ae 0.000000e+00
+is_nan_feature_al 0.000000e+00
+is_nan_feature_aj 0.000000e+00
+is_nan_feature_ag 0.000000e+00
+is_nan_feature_af 0.000000e+00
+is_nan_feature_ay 0.000000e+00
+is_nan_feature_aw 0.000000e+00
+is_nan_feature_cd 0.000000e+00
+is_nan_feature_cg 0.000000e+00

@@ -207,7 +207,7 @@ def run_lgbm(file_path, tuning=False, training=True):
         train_df_sample = train_df_sample.sort_values('ts_index').reset_index(drop=True)
         
         study = optuna.create_study(direction='maximize')
-        study.optimize(lambda trial: objective(trial, train_df_sample, features), n_trials=500)
+        study.optimize(lambda trial: objective(trial, train_df_sample, features), n_trials=20)
         
         print("\nBest trial:")
         trial = study.best_trial
@@ -267,8 +267,9 @@ def run_lgbm(file_path, tuning=False, training=True):
     os.makedirs(os.path.join(PROJECT_ROOT, 'models_param'), exist_ok=True)
     
     if training:
-        print("\n\n4. Starting Leak-Free Purged K-Fold Training with Best Parameters...")
+        print(f"\n\n4. Starting Leak-Free Purged K-Fold Training with Best Parameters...")
         
+
         X_train_full = train_df[features].values
         y_train_full = train_df['y_target'].values
         w_train_full = train_df['weight'].values

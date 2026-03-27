@@ -32,19 +32,20 @@ class NaN_Handler:
             
         print(f"Phát hiện {len(features_with_na)} features chứa NaNs.")
         
-        # Lớp 2: Đánh dấu Khuyết thiếu (Missingness Indicator)
+        # Lớp 2: gắn cờ na (Missingness Indicator)
         for col in features_with_na:
             indicator = df[col].isna().astype(np.int8)
             # Thêm bước: Nếu toàn 0 hoặc 1 (không có sự biến thiên) thì không lấy cột đó
             if indicator.nunique() > 1:
                 df[f'is_nan_{col}'] = indicator
-            
+        
         # Lớp 3: Vá lỗi Trục Dọc (Longitudinal Forward Fill)
+
         # Đảm bảo sắp xếp chuẩn trước khi ffill (Memory efficient)
         df.sort_values(by=['code', 'horizon', 'ts_index'], inplace=True)
         gc.collect()
         
-        df[features_with_na] = df.groupby(['code', 'horizon'])[features_with_na].ffill(limit=50)
+        df[features_with_na] = df.groupby(['code', 'sub_code', 'horizon'])[features_with_na].ffill(limit=50)
         gc.collect()
         
         # Lớp 4: Khắc phục Cold Start bằng Trung vị (Cross-sectional Median Fill)
@@ -77,6 +78,7 @@ class NaN_Handler:
             df = df.drop(columns=constant_cols)
             
         print(f"HOÀN THÀNH XỬ LÝ NAN: {time.time() - start_time:.2f}s")
+        print(f"Datashape: {df.shape}")
         return df
 
 def main():

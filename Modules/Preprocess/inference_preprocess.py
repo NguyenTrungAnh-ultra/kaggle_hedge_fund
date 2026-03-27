@@ -94,6 +94,7 @@ class InferencePreprocess:
             os.makedirs(output_dir)
             
         output_file = os.path.join(output_dir, 'inference_processed_full.parquet')
+        print(f"Datashape: {df.shape}")
         print(f"4. Exporting fully processed DF to: {output_file}")
         df.to_parquet(output_file, index=False)
         print(f"Đã lưu tại {output_file}")

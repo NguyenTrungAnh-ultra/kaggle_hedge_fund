@@ -170,6 +170,9 @@ class Fractional_Differencer:
         print(f"\n--- BẮT ĐẦU XỬ LÝ DỪNG PHÂN SỐ: AFML FRACTIONAL DIFFERENCER ---")
         start_time = time.time()
         
+        # # THÊM VÀO ĐÂY: Điền 0 cho các cột cần tính toán để tránh lây lan NaN khi convolve
+        # df[features_list] = df[features_list].fillna(0)
+
         # Đảm bảo sắp xếp thời gian cho từng group
         df = df.sort_values(['code', 'sub_code', 'horizon', 'ts_index']).reset_index(drop=True)
         grouped = df.groupby(['code', 'sub_code', 'horizon'], sort=False)
@@ -213,7 +216,7 @@ class Fractional_Differencer:
 
             print(f"| Done ({time.time() - start_col:.2f}s)")
             if idx % 10 == 0: gc.collect()
-            
+        print(f"Datashape: {df.shape}")
         print(f"HOÀN THÀNH XỬ LÝ: {time.time() - start_time:.2f}s")
         return df
 
@@ -277,8 +280,8 @@ class StationarityPipeline:
         meta_cols = {'id', 'y_target', 'weight', 'ts_index', 'code', 'sub_code', 'horizon', 'is_test'}
         features_to_check = [c for c in df.columns if c not in meta_cols]
         
-        # Drop những dòng bị NaN do Differencing (đầu chuỗi của mỗi nhóm)
-        df.dropna(subset=features_to_check, inplace=True)
+        # # Drop những dòng bị NaN do Differencing (đầu chuỗi của mỗi nhóm)
+        # df.dropna(subset=features_to_check, inplace=True)
         
         final_rows = len(df)
         remaining_pct = (final_rows / initial_rows) * 100
@@ -294,6 +297,7 @@ class StationarityPipeline:
         print(f"\n==========================================")
         print(f"QUÁ TRÌNH HOÀN THÀNH TOÀN BỘ")
         print(f"Tổng thời gian: {time.time() - start_all:.2f}s | Output: {self.output_file}")
+        print(f"Datashape: {df.shape}")
         print(f"==========================================")
         
         del df
