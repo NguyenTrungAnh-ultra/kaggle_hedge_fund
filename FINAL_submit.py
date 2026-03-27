@@ -8,7 +8,7 @@ import time
 import warnings
 import json
 from Modules.PurgedKFold import LeakFreePurgedKFold
-from Modules.Preprocess.OutlierHandler import OutlierHandler
+
 
 warnings.filterwarnings('ignore')
 
@@ -36,28 +36,13 @@ def main(retrain=False):
     # Phase 1 & 2: Load Preprocessed Data Directly
     print(f"1. Loading preprocessed data from {PROCESSED_DATA}...")
     df = pd.read_parquet(PROCESSED_DATA)
-    
-    # ---------------------------------------------------------
-    # SỰ ĐIỀU CHỈNH CỐT LÕI: Transductive Categorical Encoding
-    # Phải thực hiện TRƯỚC khi tách Train/Test
-    # ---------------------------------------------------------
-    print("\n2. Transductive Categorical Encodings (Vocabulary Building)...")
-    cat_cols = ['code', 'sub_code', 'sub_category']
-    for col in cat_cols:
-        # Fit LabelEncoder trên TOÀN BỘ dữ liệu (Train + Test)
-        le = LabelEncoder()
-        df[col] = le.fit_transform(df[col].astype(str))
-        print(f" > {col}: Built vocabulary of {len(le.classes_)} unique entities.")
 
-    print("\n3. Feature Engineering & Set Isolation...")
+    print("\n2. Feature Engineering & Set Isolation...")
     # Tính t1_end để dùng cho Purging nếu retrain
     df['t1_end'] = df['ts_index'] + df['horizon']
 
     # BÂY GIỜ mới tiến hành tách dữ liệu
     train_only = df[df['is_test'] == 0].copy()
-
-    # BẢO VỆ HÀM MẤT MÁT: TARGET CLIPPING (CẮT TỈA NGOẠI LAI)
-    train_only = OutlierHandler.clip_target(train_only)
     
     print("   Isolating Test Frame for Inference...")
     df = df.sort_values(['ts_index', 'code', 'sub_code', 'horizon']).reset_index(drop=True)
@@ -65,8 +50,8 @@ def main(retrain=False):
     del df # Giải phóng bộ nhớ RAM
             
     print("\n4. Feature Selection & Model Deployment...")
-    categorical_identifiers = ['code', 'sub_code', 'sub_category']
-    exclude = ['id', 'y_target', 'weight', 'ts_index', 'is_test', 't1_end'] + categorical_identifiers
+    blacklist = ['code', 'sub_code', 'sub_category']
+    exclude = ['id', 'y_target', 'weight', 'ts_index', 'is_test', 't1_end'] + blacklist
     features = [c for c in train_only.columns if c not in exclude]
     
     # Drop constant columns
@@ -142,16 +127,9 @@ def main(retrain=False):
     print(f"\n7. Activating Inference Engine (Yielding over {len(X_test)} entities)...")
     preds = np.zeros(len(X_test))
     
-    # ---------------------------------------------------------
-    # EXPONENTIAL TIME-DECAY ENSEMBLING
-    # ---------------------------------------------------------
-    decay_factor = 0.5 
-    raw_weights = np.exp(decay_factor * np.arange(1, len(models) + 1))
-    normalized_weights = raw_weights / np.sum(raw_weights)
-    
-    for i, (m, w) in enumerate(zip(models, normalized_weights), 1):
-        print(f" > Fold {i} deployed with temporal weight: {w:.4f} ({w*100:.1f}%)")
-        preds += m.predict(X_test) * w
+    for i, m in enumerate(models, 1):
+        print(f" > Deploying Fold {i} model...")
+        preds += m.predict(X_test) / len(models)
         
     test_processed['y_target'] = preds
     submission = test_processed[['id', 'y_target']].rename(columns={'y_target': 'prediction'})
@@ -162,4 +140,4 @@ def main(retrain=False):
     print(f"Total Inference Time: {time.time() - start_time:.2f}s")
 
 if __name__ == '__main__':
-    main(retrain=False)
+    main(retrain=1)

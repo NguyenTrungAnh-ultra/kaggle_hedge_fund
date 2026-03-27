@@ -19,3 +19,5 @@
 \*\*\*\* TUYỆT ĐỐI KHÔNG ĐỂ LEAK DATA BẰNG BẤT CỨ GIÁ NÀO
 
 +luôn xóa các cột "is*nan*\*" (hoặc gắt cờ) nếu chúng toàn 0 hoặc toàn 1 để tránh nạp các feature vô dụng.
+
+"thiết bị: i5 12400f, 32gb ddr4, RTX 5060"

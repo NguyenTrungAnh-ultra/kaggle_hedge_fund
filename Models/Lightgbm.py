@@ -15,7 +15,7 @@ from sklearn.preprocessing import LabelEncoder
 import warnings
 import optuna
 from Modules.PurgedKFold import LeakFreePurgedKFold
-from Modules.Preprocess.OutlierHandler import OutlierHandler
+
 
 warnings.filterwarnings('ignore')
 
@@ -33,26 +33,31 @@ def lgb_weighted_rmse(preds, dataset):
 
 def objective(trial, train_df, features):
     # Search space
-    param = {
+    params = {
         'objective': 'regression',
         'metric': 'None',
         'verbosity': -1,
+        'verbose': -1,
         'boosting_type': 'gbdt',
-        'device': 'gpu',
-        'gpu_use_dp': True,
-        'learning_rate': trial.suggest_float('learning_rate', 1e-3, 0.1, log=True),
-        'n_estimators': trial.suggest_int('n_estimators', 100, 1500),
-        'num_leaves': trial.suggest_int('num_leaves', 8, 128),
-        'max_depth': trial.suggest_int('max_depth', 3, 10),
-        'min_child_samples': trial.suggest_int('min_child_samples', 50, 5000),
-        'feature_fraction': trial.suggest_float('feature_fraction', 0.5, 0.9),
-        'bagging_fraction': trial.suggest_float('bagging_fraction', 0.5, 0.9),
-        'bagging_freq': trial.suggest_int('bagging_freq', 1, 7),
-        'lambda_l1': trial.suggest_float('lambda_l1', 1e-8, 1.0, log=True),
-        'lambda_l2': trial.suggest_float('lambda_l2', 1e-8, 1.0, log=True),
-        'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 500, 3000),
-        'min_sum_hessian_in_leaf': trial.suggest_float('min_sum_hessian_in_leaf', 1e-4, 0.1, log=True),
-        'extra_trees': trial.suggest_categorical('extra_trees', [True, False]),
+        'learning_rate': trial.suggest_float('learning_rate', 0.005, 0.05, log=True),
+        
+        # 1. PHANH CẤU TRÚC (STRUCTURAL BRAKES) - Cực kỳ quan trọng cho Finance
+        'max_depth': trial.suggest_int('max_depth', 3, 6), # Ép cây lùn (Stump-like trees)
+        'num_leaves': trial.suggest_int('num_leaves', 15, 63),
+        
+        # 2. PHANH LÁ & ĐIỀU CHUẨN (LEAF & PENALTY BRAKES)
+        'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1000, 5000), # Tránh nhiễu cục bộ
+        'lambda_l1': trial.suggest_float('lambda_l1', 1e-3, 10.0, log=True), # Lọc nhiễu features
+        'lambda_l2': trial.suggest_float('lambda_l2', 1e-1, 50.0, log=True), # Kìm hãm ngoại lai (thay thế Clipping)
+        'min_sum_hessian_in_leaf': trial.suggest_float('min_sum_hessian_in_leaf', 1e-3, 10.0, log=True),
+        
+        # 3. PHANH LẤY MẪU (SAMPLING BRAKES) - Chống đồng hóa Cây
+        'feature_fraction': trial.suggest_float('feature_fraction', 0.4, 0.8), # Mỗi cây chỉ nhìn thấy 40-80% cột
+        'bagging_fraction': trial.suggest_float('bagging_fraction', 0.5, 0.9), # Mỗi cây chỉ nhìn thấy 50-90% dòng
+        'bagging_freq': trial.suggest_int('bagging_freq', 1, 5),
+        
+        'extra_trees': trial.suggest_categorical('extra_trees', [True, False]), # Tăng tính ngẫu nhiên tại node
+        'device': 'cpu' # Hoặc 'cpu' tùy hệ thống
     }
 
     # Use a simple Hold-out (last 20% of the sample for validation) to be extremely fast
@@ -82,11 +87,11 @@ def objective(trial, train_df, features):
     dtrain = lgb.Dataset(X_tr, label=y_tr, weight=w_tr)
     dval = lgb.Dataset(X_va, label=y_va, weight=w_va, reference=dtrain)
 
-    params = param.copy()
-    num_boost_round = params.pop('n_estimators', 100)
+    trial_params = params.copy()
+    num_boost_round = trial_params.pop('n_estimators', 100)
 
     model = lgb.train(
-        params,
+        trial_params,
         dtrain,
         valid_sets=[dval],
         valid_names=['valid'],
@@ -109,9 +114,6 @@ def run_lgbm(file_path, tuning=False, training=True):
         
     df = pd.read_parquet(file_path)
     print(f"Dataset shape: {df.shape}")
-
-    # BẢO VỆ HÀM MẤT MÁT: TARGET CLIPPING (CẮT TỈA NGOẠI LAI)
-    df = OutlierHandler.clip_target(df)
 
     # Prepare t1 (Label End Time) column
     df['t1_end'] = df['ts_index'] + df['horizon']
@@ -159,8 +161,8 @@ def run_lgbm(file_path, tuning=False, training=True):
 
     # Definition of features
     # Mở rộng danh sách loại trừ bằng các tính năng Không Dừng (Failed FracDiff)
-
-    exclude = ['id', 'y_target', 'weight', 'ts_index', 't1_end']
+    blacklist = blacklist = ['code', 'sub_code', 'sub_category','horizon']
+    exclude = ['id', 'y_target', 'weight', 'ts_index', 't1_end'] + blacklist
     features = [c for c in df.columns if c not in exclude]
     
     # Drop constant columns which can cause GPU split errors
@@ -205,7 +207,7 @@ def run_lgbm(file_path, tuning=False, training=True):
         train_df_sample = train_df_sample.sort_values('ts_index').reset_index(drop=True)
         
         study = optuna.create_study(direction='maximize')
-        study.optimize(lambda trial: objective(trial, train_df_sample, features), n_trials=20)
+        study.optimize(lambda trial: objective(trial, train_df_sample, features), n_trials=500)
         
         print("\nBest trial:")
         trial = study.best_trial
@@ -246,8 +248,9 @@ def run_lgbm(file_path, tuning=False, training=True):
         'objective': 'regression',
         'metric': 'None',
         'verbosity': -1,
+        'verbose': -1,
         'boosting_type': 'gbdt',
-        'device': 'gpu',
+        'device': 'cpu',
         'gpu_use_dp': True,
         'importance_type': 'gain'
     })
@@ -316,7 +319,7 @@ def run_lgbm(file_path, tuning=False, training=True):
             
             print(f"Loading model: {model_filename}")
             model = lgb.Booster(model_file=model_filename)
-            test_preds += model.predict(test_X) / 5
+            test_preds += model.predict(test_X) / cv.n_splits
             models.append(model)
         
     print("\n5. Evaluating Ensemble on Test Set...")
@@ -346,5 +349,5 @@ def run_lgbm(file_path, tuning=False, training=True):
     print(f"\nReport saved to {report_file}")
 
 if __name__ == '__main__':
-    file_path = os.path.join(DATA_DIR, 'train_stationary.parquet')
-    run_lgbm(file_path=file_path, tuning=0, training=1)
+    file_path = os.path.join(DATA_DIR, 'train_feature_builded.parquet')
+    run_lgbm(file_path=file_path, tuning=1, training=1)

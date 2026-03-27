@@ -126,51 +126,38 @@ class Seasonal_Handler:
 
 class Fractional_Differencer:
     """
-    Module Xử lý Dừng phân số (Fractional Differencing) sử dụng Modified Fixed-Width Window (FFW).
-    Ước lượng tham số d trên toàn bộ tập dữ liệu để tối ưu độ chính xác và RAM.
+    Module Xử lý Dừng phân số (Fractional Differencing) chuẩn mực AFML.
+    Sử dụng Fixed-Width Window theo ngưỡng cắt (tau).
     """
     @staticmethod
-    def get_weights(d, size):
+    def get_weights_ffw(d, tau=1e-4, max_size=2000):
+        """Tạo chuỗi trọng số w_0, w_1, ..., w_k"""
         w = [1.0]
-        for k in range(1, size):
+        for k in range(1, max_size):
             w_k = -w[-1] / k * (d - k + 1)
+            if abs(w_k) < tau:
+                break
             w.append(w_k)
-        w = np.array(w[::-1]).reshape(-1, 1)
-        return w
+        # QUAN TRỌNG: Không đảo ngược weights khi dùng np.convolve
+        return np.array(w).astype(np.float32)
 
     @staticmethod
     def find_optimal_d(series):
-        """
-        Tìm tham số d tối ưu (0 -> 1) sao cho chuỗi dữ liệu đạt tính dừng (ADF < 0.05).
-        Sử dụng toàn bộ dữ liệu được cung cấp.
-        """
         series = series.dropna().values
-        if len(series) < 20: 
+        if len(series) < 100: 
             return 1.0 
         
-        # Thử các giá trị d từ 0 đến 1 với bước nhảy 0.1
-        for d in np.linspace(0, 1, 11):
-            if d == 0.0:
-                diff_series = series
-            else:
-                w_full = Fractional_Differencer.get_weights(d, len(series))
-                w_cumsum = np.cumsum(np.abs(w_full))
+        # Thử d từ 0.1 đến 0.9
+        for d in np.arange(0.1, 1.0, 0.1):
+            w_for_conv = Fractional_Differencer.get_weights_ffw(d)
+            if len(w_for_conv) >= len(series):
+                continue
                 
-                # Cắt trọng số nhiễu (FFW - Fixed-Width Window)
-                skip = np.searchsorted(w_cumsum / w_cumsum[-1], 1e-2)
-                if (len(series) - skip) > 50:
-                    skip = len(series) - 50
-                    
-                w = w_full[skip:]
-                if len(w) == 0:
-                    w = w_full[-1:]
-                    
-                w_for_conv = w[::-1].flatten() 
-                diff_series = np.convolve(series, w_for_conv, mode='valid')
-                
-            if len(diff_series) > 10:
+            # Mode 'valid' bỏ qua các phần tử không đủ cửa sổ
+            diff_series = np.convolve(series, w_for_conv, mode='valid')
+            
+            if len(diff_series) > 50:
                 try:
-                    # Kiểm định ADF
                     p_val = adfuller(diff_series)[1]
                     if p_val <= 0.05:
                         return float(d)
@@ -180,80 +167,54 @@ class Fractional_Differencer:
 
     def process(self, df: pd.DataFrame, features_list: list) -> pd.DataFrame:
         import gc
-        print(f"\n--- BẮT ĐẦU XỬ LÝ DỪNG PHÂN SỐ: FRACTIONAL DIFFERENCER (RAM Optimized) ---")
+        print(f"\n--- BẮT ĐẦU XỬ LÝ DỪNG PHÂN SỐ: AFML FRACTIONAL DIFFERENCER ---")
         start_time = time.time()
         
-        # 1. Đảm bảo sắp xếp chuẩn thời gian
+        # Đảm bảo sắp xếp thời gian cho từng group
         df = df.sort_values(['code', 'sub_code', 'horizon', 'ts_index']).reset_index(drop=True)
-        
-        # 2. Ước tính d trên TOÀN BỘ tập dữ liệu (Không split)
-        print("Đang tìm group lớn nhất trên toàn bộ dataset để ước lượng d...")
-        
-        # Nhóm dữ liệu để lấy thông tin size
         grouped = df.groupby(['code', 'sub_code', 'horizon'], sort=False)
+        
+        # Chọn group lớn nhất để ước lượng d chung cho feature (tối ưu tốc độ)
         group_sizes = grouped.size()
         top_group_keys = group_sizes.idxmax()
-        max_size = group_sizes.max()
-        
-        # Lấy indices của group lớn nhất để tránh copy dataframe lớn
         test_idx = df[(df['code'] == top_group_keys[0]) & 
                       (df['sub_code'] == top_group_keys[1]) & 
                       (df['horizon'] == top_group_keys[2])].index
-        
-        print(f"Group đại diện: {top_group_keys} | Size: {len(test_idx)}")
-        
-        # 3. Tính toán trọng số và áp dụng cho từng cột
+                      
         for idx, col in enumerate(features_list, 1):
             start_col = time.time()
             
-            # 3. Tính toán trọng số và áp dụng cho từng cột
-        for idx, col in enumerate(features_list, 1):
-            start_col = time.time()
-            
-            # --- FIX DATA LEAKAGE ---
-            # Chỉ ước tính d_opt trên phần dữ liệu thuộc tập Train (is_test == 0)
-            if 'is_test' in df.columns:
-                train_idx = df[(df['code'] == top_group_keys[0]) & 
-                               (df['sub_code'] == top_group_keys[1]) & 
-                               (df['horizon'] == top_group_keys[2]) &
-                               (df['is_test'] == 0)].index
-                test_series = df.loc[train_idx, col]
-            else:
-                # Fallback nếu đang chạy độc lập trên tập Train
-                test_series = df.loc[test_idx, col]
-                
+            # Tìm d tối ưu trên group đại diện
+            test_series = df.loc[test_idx, col]
             opt_d = self.find_optimal_d(test_series)
-            # ------------------------
             
             print(f"[{idx}/{len(features_list)}] {col:15} | d_opt: {opt_d:.1f} ", end='', flush=True)
             
-            if opt_d > 0.0:
-                w_full = self.get_weights(opt_d, max_size)
-                w_cumsum = np.cumsum(np.abs(w_full))
-                skip = np.searchsorted(w_cumsum / w_cumsum[-1], 1e-2)
-                if (max_size - skip) > 50: skip = max_size - 50
-                
-                w = w_full[skip:]
-                if len(w) > 0:
-                    w_for_conv = w[::-1].flatten()
-                    window_len = len(w)
+            if opt_d < 1.0: # Chỉ xử lý nếu d < 1.0 (vì d=1.0 là integer diff, d=0.0 là giữ nguyên)
+                w_for_conv = self.get_weights_ffw(opt_d)
+                window_len = len(w_for_conv)
 
-                    # Transform vectorization - ép kiểu float32 để tiết kiệm RAM
-                    df[col] = grouped[col].transform(lambda g: 
-                        np.convolve(g.values, w_for_conv, mode='full')[:len(g)].astype(np.float32) 
-                        if len(g) >= window_len else np.full(len(g), np.nan, dtype=np.float32)
-                    )
-                else:
-                    print(f"| Skipping (Empty weights) ", end='')
+                # Áp dụng song song/vectorized trên từng group
+                def apply_frac_diff(g):
+                    if len(g) < window_len:
+                        return np.full(len(g), np.nan, dtype=np.float32)
+                    
+                    # Tính toán sai phân
+                    res = np.convolve(g.values, w_for_conv, mode='full')[:len(g)]
+                    # ĐẶT NAN cho phần warm-up (không đủ dữ liệu quá khứ)
+                    res[:window_len-1] = np.nan
+                    return res.astype(np.float32)
+
+                df[col] = grouped[col].transform(apply_frac_diff)
             
-            # Quản lý RAM: dọn dẹp thường xuyên hơn
-            if idx % 10 == 0:
-                gc.collect()
-            
+            elif opt_d == 1.0:
+                # Nếu d=1.0, dùng diff standard của pandas cho nhanh
+                df[col] = grouped[col].transform(lambda g: g.diff().astype(np.float32))
+
             print(f"| Done ({time.time() - start_col:.2f}s)")
+            if idx % 10 == 0: gc.collect()
             
-        gc.collect()
-        print(f"HOÀN THÀNH XỬ LÝ DỪNG PHÂN SỐ: {time.time() - start_time:.2f}s")
+        print(f"HOÀN THÀNH XỬ LÝ: {time.time() - start_time:.2f}s")
         return df
 
 
