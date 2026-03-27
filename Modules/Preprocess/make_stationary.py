@@ -202,10 +202,21 @@ class Fractional_Differencer:
                     if len(g) < window_len:
                         return np.full(len(g), np.nan, dtype=np.float32)
                     
-                    # Tính toán sai phân
-                    res = np.convolve(g.values, w_for_conv, mode='full')[:len(g)]
+                    # NỘI SUY CỤC BỘ DÀNH RIÊNG CHO CONVOLVE
+                    # Tránh hiệu ứng lây lan (propagation) của NaN ra toàn bộ window length.
+                    # Mảng này chỉ dùng để tính toán nội bộ.
+                    g_filled = pd.Series(g.values).ffill().bfill().fillna(0).values
+                    
+                    # Tính toán sai phân trên mảng đã lấp NaN
+                    res = np.convolve(g_filled, w_for_conv, mode='full')[:len(g)]
+                    
                     # ĐẶT NAN cho phần warm-up (không đủ dữ liệu quá khứ)
                     res[:window_len-1] = np.nan
+                    
+                    # Phục hồi giá trị NaN nguyên thủy 
+                    # (Nếu data gốc là NaN thì điểm ảnh sai phân cũng nên là NaN)
+                    res[np.isnan(g.values)] = np.nan
+                    
                     return res.astype(np.float32)
 
                 df[col] = grouped[col].transform(apply_frac_diff)

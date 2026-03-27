@@ -39,24 +39,24 @@ class NaN_Handler:
             if indicator.nunique() > 1:
                 df[f'is_nan_{col}'] = indicator
         
-        # Lớp 3: Vá lỗi Trục Dọc (Longitudinal Forward Fill)
+        # # Lớp 3: Vá lỗi Trục Dọc (Longitudinal Forward Fill)
 
-        # Đảm bảo sắp xếp chuẩn trước khi ffill (Memory efficient)
-        df.sort_values(by=['code', 'horizon', 'ts_index'], inplace=True)
-        gc.collect()
+        # # Đảm bảo sắp xếp chuẩn trước khi ffill (Memory efficient)
+        # df.sort_values(by=['code', 'horizon', 'ts_index'], inplace=True)
+        # gc.collect()
         
-        df[features_with_na] = df.groupby(['code', 'sub_code', 'horizon'])[features_with_na].ffill(limit=50)
-        gc.collect()
+        # df[features_with_na] = df.groupby(['code', 'sub_code', 'horizon'])[features_with_na].ffill(limit=50)
+        # gc.collect()
         
-        # Lớp 4: Khắc phục Cold Start bằng Trung vị (Cross-sectional Median Fill)
-        na_after_l3 = df[features_with_na].isna().sum()
-        features_still_na = na_after_l3[na_after_l3 > 0].index.tolist()
+        # # Lớp 4: Khắc phục Cold Start bằng Trung vị (Cross-sectional Median Fill)
+        # na_after_l3 = df[features_with_na].isna().sum()
+        # features_still_na = na_after_l3[na_after_l3 > 0].index.tolist()
         
-        if features_still_na:
-            # Điền trung vị theo mặt cắt ts_index và horizon
-            medians_ts_horizon = df.groupby(['ts_index', 'horizon'])[features_still_na].transform('median')
-            df[features_still_na] = df[features_still_na].fillna(medians_ts_horizon)
-            del medians_ts_horizon
+        # if features_still_na:
+        #     # Điền trung vị theo mặt cắt ts_index và horizon
+        #     medians_ts_horizon = df.groupby(['ts_index', 'horizon'])[features_still_na].transform('median')
+        #     df[features_still_na] = df[features_still_na].fillna(medians_ts_horizon)
+        #     del medians_ts_horizon
             gc.collect()
             
         # Lớp 5: Hậu xử lý - Loại bỏ các cột hằng số (toàn 0 hoặc toàn 1)

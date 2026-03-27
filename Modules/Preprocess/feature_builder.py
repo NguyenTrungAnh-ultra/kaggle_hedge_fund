@@ -89,16 +89,18 @@ class AlphaGenerator:
             new_col_name = f"{col}_sector_zscore"
             
             # BƯỚC 2: Tính toán Thống kê Cục bộ (Local Statistics)
+            # Lưu ý quan trọng: Pandas .transform('mean') và .transform('std') TỰ ĐỘNG BỎ QUA NaN.
             group_mean = grouped[col].transform('mean')
             group_std = grouped[col].transform('std')
             
             # BƯỚC 3: Chuẩn hóa Z-Score và Xử lý Lỗi Chia cho 0 (Zero-Division Safe)
-            # Nếu std = 0 (tất cả mã trong ngành có cùng giá trị), gán z-score = 0 thay vì NaN/Inf
-            safe_std = np.where(group_std == 0, 1.0, group_std)
-            z_score = (df[col] - group_mean) / safe_std
+            # Nhóm 1 phần tử thì std = NaN -> Gán thành 1.0 để tránh phép chia cho NaN
+            safe_std = group_std.fillna(1.0)
+            # Nếu tất cả giá trị bằng nhau thì std = 0 -> Gán thành 1.0
+            safe_std = np.where(safe_std == 0, 1.0, safe_std)
             
-            # Xử lý các trường hợp nhóm chỉ có 1 phần tử (std = NaN)
-            z_score = z_score.fillna(0.0)
+            # Tính z-score: Nếu df[col] vốn là NaN thì z-score sẽ giữ nguyên là NaN (Bảo toàn Native NaN)
+            z_score = (df[col] - group_mean) / safe_std
             
             new_cols[new_col_name] = z_score.astype(np.float32)
             
