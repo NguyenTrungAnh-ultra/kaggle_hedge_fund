@@ -79,7 +79,7 @@ class InferencePreprocess:
         print("4. Bắt đầu tạo Alpha Features (Lags & Z-Score)...")
         alpha_gen = AlphaGenerator()
         df = alpha_gen.inject_lagged_momentum(df)
-        df = alpha_gen.inject_cross_sectional_zscore(df)
+        df = alpha_gen.inject_cross_sectional_zscore(df, rawdata=None)
         gc.collect()
         
         # 8. Final Sorting for Time-Series logic

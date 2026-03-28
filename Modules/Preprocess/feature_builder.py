@@ -9,6 +9,7 @@ import os
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 DATA_DIR = os.path.join(BASE_DIR, 'ts-forecasting')
 INPUT_FILE = os.path.join(DATA_DIR, 'train_stationary.parquet')
+RAW_DATA = os.path.join(DATA_DIR, 'train.parquet')
 OUTPUT_FILE = os.path.join(DATA_DIR, 'train_feature_builded.parquet')
 
 class AlphaGenerator:
@@ -16,7 +17,7 @@ class AlphaGenerator:
     Module tạo Phái sinh Alpha (Feature Engineering).
     Bảo đảm tuyệt đối nguyên tắc Nhân quả (Causality) và Không Rò rỉ (Zero-Leakage).
     """
-    def __init__(self, lag_features=['feature_al', 'feature_am', 'feature_cg', 'feature_by'], lags=[1, 3, 5, 10, 25]):
+    def __init__(self, lag_features=['feature_al_sta', 'feature_am_sta', 'feature_cg_sta', 'feature_by_sta'], lags=[1, 3, 5, 10, 25]):
         self.lag_features = lag_features
         self.lags = lags
 
@@ -51,11 +52,12 @@ class AlphaGenerator:
             df = pd.concat([df, pd.DataFrame(new_cols, index=df.index)], axis=1)
                 
         print(f" Đã tạo thành công {len(new_cols)} đặc trưng trễ. Tối ưu hóa float32.")
+        print(f" Tổng NaN tại cuối lớp Trí Nhớ Trục Dọc: {df.isna().sum().sum()}")
         print(f" Thời gian thực thi: {time.time() - start_time:.2f}s")
         
         return df
     
-    def inject_cross_sectional_zscore(self, df: pd.DataFrame, target_features=['feature_k', 'feature_at', 'feature_by']) -> pd.DataFrame:
+    def inject_cross_sectional_zscore(self, df: pd.DataFrame, target_features=['feature_k_sta', 'feature_at_sta', 'feature_by_sta'], rawdata=RAW_DATA) -> pd.DataFrame:
         """
         Module Cấy ghép Sức mạnh Trục ngang (Sector-Neutral Cross-Sectional Z-Score).
         
@@ -107,10 +109,30 @@ class AlphaGenerator:
         if new_cols:
             df = pd.concat([df, pd.DataFrame(new_cols, index=df.index)], axis=1)
             
+        if rawdata and os.path.exists(rawdata):
+            print(f" Nối với raw data (phục hồi các cột bị rớt) từ: {rawdata}")
+            raw_df = pd.read_parquet(rawdata)
+            
+            cols_to_add = [c for c in raw_df.columns if c not in df.columns]
+            
+            if 'id' in df.columns and 'id' in raw_df.columns:
+                # Dùng left join để giữ nguyên dữ liệu gốc của pipeline df hiện tại (gồm cả modified features)
+                # và chỉ lấy thêm các cột missing từ raw_df tương ứng.
+                df = pd.merge(df, raw_df[['id'] + cols_to_add], on='id', how='left')
+            else:
+                raw_df = raw_df.sort_values(['code', 'sub_code', 'horizon', 'ts_index']).reset_index(drop=True)
+                # Fallback ghép nối trực tiếp nếu không thể nối qua id.
+                df = pd.concat([df, raw_df[cols_to_add]], axis=1)
+                
+            # Đảm bảo trục thời gian không bị lệch sau khi merge
+            if all(col in df.columns for col in ['code', 'sub_code', 'horizon', 'ts_index']):
+                df.sort_values(['code', 'sub_code', 'horizon', 'ts_index'], inplace=True)
+                df.reset_index(drop=True, inplace=True)
+            
         print(f" Đã tạo thành công {len(new_cols)} đặc trưng Z-Score chéo nhóm ngành.")
+        print(f" Tổng NaN tại cuối lớp Z-Score & Merge Raw Data: {df.isna().sum().sum()}")
+        print(f" Data Shape: {df.shape}")
         print(f" Thời gian thực thi: {time.time() - start_time:.2f}s")
-        # print(f"Quá lười biếng, tôi fillna=0")
-        # df.fillna(0, inplace=True)
         return df
 
 def main(file_path):

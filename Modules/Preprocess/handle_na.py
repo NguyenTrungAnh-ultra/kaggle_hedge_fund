@@ -79,6 +79,7 @@ class NaN_Handler:
             
         print(f"HOÀN THÀNH XỬ LÝ NAN: {time.time() - start_time:.2f}s")
         print(f"Datashape: {df.shape}")
+        print(f"Tổng NaN hiện tại: {df.isna().sum().sum()}")
         return df
 
 def main():

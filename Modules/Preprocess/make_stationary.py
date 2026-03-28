@@ -219,15 +219,16 @@ class Fractional_Differencer:
                     
                     return res.astype(np.float32)
 
-                df[col] = grouped[col].transform(apply_frac_diff)
+                df[f"{col}_sta"] = grouped[col].transform(apply_frac_diff)
             
             elif opt_d == 1.0:
                 # Nếu d=1.0, dùng diff standard của pandas cho nhanh
-                df[col] = grouped[col].transform(lambda g: g.diff().astype(np.float32))
+                df[f"{col}_sta"] = grouped[col].transform(lambda g: g.diff().astype(np.float32))
 
             print(f"| Done ({time.time() - start_col:.2f}s)")
             if idx % 10 == 0: gc.collect()
         print(f"Datashape: {df.shape}")
+        print(f"Tổng NaN sau xử lý Dừng Phân Số (Fractional Differencing): {df.isna().sum().sum()}")
         print(f"HOÀN THÀNH XỬ LÝ: {time.time() - start_time:.2f}s")
         return df
 
