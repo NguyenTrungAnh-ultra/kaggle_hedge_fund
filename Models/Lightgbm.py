@@ -15,7 +15,7 @@ from sklearn.preprocessing import LabelEncoder
 import warnings
 import optuna
 from Modules.PurgedKFold import LeakFreePurgedKFold
-
+from Pseudo_Huber_Loss import create_pseudo_huber_objective
 
 warnings.filterwarnings('ignore')
 
@@ -32,33 +32,51 @@ def lgb_weighted_rmse(preds, dataset):
 
 
 def objective(trial, train_df, features):
-    # Search space
+    # --- BƯỚC 1: TRÍCH XUẤT THAM SỐ ĐỘNG LỰC HỌC ---
+    # Phải lấy giá trị max_depth trước để làm cơ sở toán học tính toán giới hạn cho num_leaves
+    suggested_max_depth = trial.suggest_int('max_depth', 3, 6)
+
+    # Dò tìm ngưỡng Delta (Độ lệch chuẩn của y_target khoảng 32.5, nên dò quanh vùng 5-100)
+    delta_opt = trial.suggest_float('pseudo_huber_delta', 5.0, 100.0)
+
+    # Tính toán sức chứa tối đa theo lý thuyết
+    max_theoretical_leaves = 2 ** suggested_max_depth
+    
+    # Ép Cây Bất đối xứng (Asymmetric Trees): num_leaves chỉ chiếm 40% - 75% sức chứa
+    lower_bound = max(8, int(max_theoretical_leaves * 0.4)) 
+    upper_bound = max(lower_bound, int(max_theoretical_leaves * 0.75))
+    
+    suggested_num_leaves = trial.suggest_int('num_leaves', lower_bound, upper_bound)
+
+    # --- BƯỚC 2: KHAI BÁO DICTIONARY TIÊU CHUẨN ---
     params = {
-        'objective': 'regression',
+        'objective': 'None',
         'metric': 'None',
         'verbosity': -1,
         'verbose': -1,
         'boosting_type': 'gbdt',
-        'learning_rate': trial.suggest_float('learning_rate', 0.005, 0.05, log=True),
+        'learning_rate': trial.suggest_float('learning_rate', 0.005, 0.1, log=True),
         
-        # 1. PHANH CẤU TRÚC (STRUCTURAL BRAKES) - Cực kỳ quan trọng cho Finance
-        'max_depth': trial.suggest_int('max_depth', 3, 6), # Ép cây lùn (Stump-like trees)
-        'num_leaves': trial.suggest_int('num_leaves', 15, 63),
+        # 1. PHANH CẤU TRÚC (STRUCTURAL BRAKES) - Đã được gán giá trị động
+        'max_depth': suggested_max_depth,
+        'num_leaves': suggested_num_leaves,
         
         # 2. PHANH LÁ & ĐIỀU CHUẨN (LEAF & PENALTY BRAKES)
-        'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1000, 5000), # Tránh nhiễu cục bộ
-        'lambda_l1': trial.suggest_float('lambda_l1', 1e-3, 10.0, log=True), # Lọc nhiễu features
-        'lambda_l2': trial.suggest_float('lambda_l2', 1e-1, 50.0, log=True), # Kìm hãm ngoại lai (thay thế Clipping)
+        'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1000, 5000), 
+        'lambda_l1': trial.suggest_float('lambda_l1', 1e-3, 10.0, log=True), 
+        'lambda_l2': trial.suggest_float('lambda_l2', 1e-1, 50.0, log=True), 
         'min_sum_hessian_in_leaf': trial.suggest_float('min_sum_hessian_in_leaf', 1e-3, 10.0, log=True),
         
-        # 3. PHANH LẤY MẪU (SAMPLING BRAKES) - Chống đồng hóa Cây
-        'feature_fraction': trial.suggest_float('feature_fraction', 0.4, 0.8), # Mỗi cây chỉ nhìn thấy 40-80% cột
-        'bagging_fraction': trial.suggest_float('bagging_fraction', 0.5, 0.9), # Mỗi cây chỉ nhìn thấy 50-90% dòng
+        # 3. PHANH LẤY MẪU (SAMPLING BRAKES) 
+        'feature_fraction': trial.suggest_float('feature_fraction', 0.4, 0.8), 
+        'bagging_fraction': trial.suggest_float('bagging_fraction', 0.5, 0.9), 
         'bagging_freq': trial.suggest_int('bagging_freq', 1, 5),
         
-        'extra_trees': trial.suggest_categorical('extra_trees', [True, False]), # Tăng tính ngẫu nhiên tại node
-        'device': 'cpu' # Hoặc 'cpu' tùy hệ thống
+        'extra_trees': trial.suggest_categorical('extra_trees', [True, False]), 
+        'device': 'cpu' 
     }
+    
+    # ... (Phần Hold-out split bên dưới giữ nguyên) ...
 
     # Use a simple Hold-out (last 20% of the sample for validation) to be extremely fast
     # train_df is already sorted by time (ts_index)
@@ -90,6 +108,8 @@ def objective(trial, train_df, features):
     trial_params = params.copy()
     num_boost_round = trial_params.pop('n_estimators', 100)
 
+    trial_params['objective'] = create_pseudo_huber_objective(delta=delta_opt)
+
     model = lgb.train(
         trial_params,
         dtrain,
@@ -103,6 +123,10 @@ def objective(trial, train_df, features):
     v_preds = model.predict(X_va)
     w_score = weighted_rmse_score(y_va, v_preds, w_va)
     print(f"    [Trial {trial.number}] Weighted RMSE: {w_score:.6f}")
+    
+    # Giải phóng bộ nhớ RAM nội bộ Trial
+    del X_tr, y_tr, w_tr, X_va, y_va, w_va, dtrain, dval
+    
     return w_score
 
 def run_lgbm(file_path, tuning=False, training=True):
@@ -135,34 +159,15 @@ def run_lgbm(file_path, tuning=False, training=True):
         print(f"Dropping {(~valid_mask).sum()} rows with missing target.")
         df = df[valid_mask].copy().reset_index(drop=True)
 
-    # Note: Chronological Split (Train/Test 80/20)
-    print("\n2. Splitting Hold-out Test (Chronological 80/20)...")
-    unique_ts = np.sort(df['ts_index'].unique())
-    split_ts_idx = int(len(unique_ts) * 0.80)
-    split_time = unique_ts[split_ts_idx]
-    
-    train_mask = df['ts_index'] < split_time
-    test_mask = df['ts_index'] >= split_time
-    
-    train_df = df[train_mask].copy()
-    test_df = df[test_mask].copy()
-    
-    test_start_time = test_df['ts_index'].min()
-    
-    # Purge the gap between train and test
-    overlap_mask = train_df['t1_end'] > test_start_time
-    purged_count = overlap_mask.sum()
-    if purged_count > 0:
-        print(f"Purging {purged_count} leaking samples from Train overlapping the Test set...")
-        train_df = train_df[~overlap_mask].copy().reset_index(drop=True)
-        
+    # Note: Using FULL dataset for Cross-Validation (No Hold-out)
+    # Use the existing df, avoid redundant copies
+    train_df = df 
     print(f"Final Train shape: {train_df.shape}")
-    print(f"Final Test shape : {test_df.shape}")
 
     # Definition of features
     # Mở rộng danh sách loại trừ bằng các tính năng Không Dừng (Failed FracDiff)
-    blacklist = blacklist = ['code', 'sub_code', 'sub_category','horizon']
-    exclude = ['id', 'y_target', 'weight', 'ts_index', 't1_end'] + blacklist
+    blacklist = ['code', 'sub_code', 'sub_category']
+    exclude = ['id', 'y_target', 'weight', 'ts_index', 't1_end']
     features = [c for c in df.columns if c not in exclude]
     
     # Drop constant columns which can cause GPU split errors
@@ -219,15 +224,16 @@ def run_lgbm(file_path, tuning=False, training=True):
         # Save best parameters to JSON
         import json
         param_dir = os.path.join(PROJECT_ROOT, "models_param")
-        if not os.path.exists(param_dir):
-            os.makedirs(param_dir)
+        os.makedirs(param_dir, exist_ok=True)
         
         param_path = os.path.join(param_dir, "lgb_best_param.json")
         with open(param_path, 'w') as f:
             json.dump(trial.params, f, indent=4)
         print(f"\nBest parameters saved to {param_path}")
 
-        return trial.params
+        params = trial.params
+        del train_df_sample # Giải phóng bộ nhớ RAM
+        return params
 
     # 3. Handle Hyperparameters: Tune or Load from JSON
     import json
@@ -245,7 +251,6 @@ def run_lgbm(file_path, tuning=False, training=True):
 
     # Standard system-level parameters
     best_params.update({
-        'objective': 'regression',
         'metric': 'None',
         'verbosity': -1,
         'verbose': -1,
@@ -257,12 +262,8 @@ def run_lgbm(file_path, tuning=False, training=True):
 
     cv = LeakFreePurgedKFold(n_splits=5, pctEmbargo=0.01)
     
-    test_X = test_df[features].values
-    test_y = test_df['y_target'].values
-    test_w = test_df['weight'].values
-
     models = []
-    test_preds = np.zeros(len(test_df))
+    fold_scores = []
     
     os.makedirs(os.path.join(PROJECT_ROOT, 'models_param'), exist_ok=True)
     
@@ -274,8 +275,14 @@ def run_lgbm(file_path, tuning=False, training=True):
         y_train_full = train_df['y_target'].values
         w_train_full = train_df['weight'].values
         
+        # Keep only essential columns for CV splitting to save memory
+        # LeakFreePurgedKFold needs ts_index and t1_end
+        cv_meta = train_df[['ts_index', 't1_end']].copy()
+        del train_df # Giải phóng bộ nhớ RAM
+        del df # Giải phóng bộ nhớ RAM
+        
         fold = 1
-        for train_idx, val_idx in cv.split(train_df):
+        for train_idx, val_idx in cv.split(cv_meta):
             print(f"\n--- Fold {fold} ---")
             
             X_tr, y_tr, w_tr = X_train_full[train_idx], y_train_full[train_idx], w_train_full[train_idx]
@@ -288,17 +295,22 @@ def run_lgbm(file_path, tuning=False, training=True):
 
             params = best_params.copy()
             num_boost_round = params.pop('n_estimators', 1000)
+            delta_opt = params.get('pseudo_huber_delta', 15.0)
+            params['objective'] = create_pseudo_huber_objective(delta=delta_opt)
 
             model = lgb.train(
                 params,
                 dtrain,
-                valid_sets=[dval],
-                valid_names=['valid'],
+                valid_sets=[dval, dtrain],
+                valid_names=['valid', 'train'],
                 feval=lgb_weighted_rmse,
                 num_boost_round=num_boost_round,
-                callbacks=[lgb.early_stopping(stopping_rounds=50, verbose=False)]
+                callbacks=[
+                    lgb.early_stopping(stopping_rounds=100, verbose=False),
+                    lgb.log_evaluation(period=50)]
             )
             
+            # Save model
             model_filename = os.path.join(PROJECT_ROOT, "models_param", f"lgbm_fold_{fold}.txt")
             model.save_model(model_filename)
             print(f"Saved model to {model_filename}")
@@ -306,10 +318,15 @@ def run_lgbm(file_path, tuning=False, training=True):
             v_preds = model.predict(X_va)
             v_wrmse = weighted_rmse_score(y_va, v_preds, w_va)
             print(f"Fold {fold} Weighted RMSE: {v_wrmse:.5f}")
+            fold_scores.append(v_wrmse)
             
-            test_preds += model.predict(test_X) / cv.n_splits
             models.append(model)
+            
+            # Giải phóng bộ nhớ từng Fold
+            del X_tr, y_tr, w_tr, X_va, y_va, w_va, dtrain, dval
             fold += 1
+
+        print(f"\n==> AVERAGE CV WEIGHTED RMSE: {np.mean(fold_scores):.6f} (+/- {np.std(fold_scores):.6f})")
     else:
         print("\n4. Skipping training, loading models from models_param...")
         for fold in range(1, 6):
@@ -320,13 +337,10 @@ def run_lgbm(file_path, tuning=False, training=True):
             
             print(f"Loading model: {model_filename}")
             model = lgb.Booster(model_file=model_filename)
-            test_preds += model.predict(test_X) / cv.n_splits
             models.append(model)
         
-    print("\n5. Evaluating Ensemble on Test Set...")
-    final_wrmse = weighted_rmse_score(test_y, test_preds, test_w)
-
-    print(f"==> WEIGHTED RMSE SCORE (Test Set)       : {final_wrmse:.6f}")
+    final_wrmse = np.mean(fold_scores) if fold_scores else 0
+    print(f"\n5. Final Assessment (CV Mean Score): {final_wrmse:.6f}")
     
     # Feature importances
     imp_df = pd.DataFrame({'feature': features})
@@ -340,9 +354,9 @@ def run_lgbm(file_path, tuning=False, training=True):
     report_file = os.path.join(LOG_DIR, 'reports', 'feature_important.txt')
     os.makedirs(os.path.dirname(report_file), exist_ok=True)
     with open(report_file, 'w') as f:
-        f.write("=== FINAL TEST SET EVALUATION ===\n")
-        f.write("Method: Leak-Free Purged K-Fold (Chronological Train/Test + Validation)\n")
-        f.write(f"Weighted RMSE Score: {final_wrmse:.6f}\n\n")
+        f.write("=== FINAL CV EVALUATION ===\n")
+        f.write("Method: Leak-Free Purged K-Fold (Full Training Set)\n")
+        f.write(f"Average CV Weighted RMSE: {final_wrmse:.6f}\n\n")
         f.write("Note: Models have been saved to 'models_param' directory.\n\n")
         f.write("Top 20 Features:\n")
         f.write(imp_df.to_string(index=False))
@@ -351,4 +365,4 @@ def run_lgbm(file_path, tuning=False, training=True):
 
 if __name__ == '__main__':
     file_path = os.path.join(DATA_DIR, 'train_feature_builded.parquet')
-    run_lgbm(file_path=file_path, tuning=1, training=1)
+    run_lgbm(file_path=file_path, tuning=0, training=1)

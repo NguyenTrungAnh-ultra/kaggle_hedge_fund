@@ -36,10 +36,20 @@ def main(retrain=False):
     # Phase 1 & 2: Load Preprocessed Data Directly
     print(f"1. Loading preprocessed data from {PROCESSED_DATA}...")
     df = pd.read_parquet(PROCESSED_DATA)
+    print(f"Data_shape: {df.shape}")
 
     print("\n2. Feature Engineering & Set Isolation...")
     # Tính t1_end để dùng cho Purging nếu retrain
     df['t1_end'] = df['ts_index'] + df['horizon']
+
+    # Label Encoding cho các cột Categorical trước khi tách Train/Test
+    # (Do retrain=True hoặc do tập parquet bao quát toàn cục nên fit_transform sẽ đồng nhất mapping)
+    cat_cols = ['code', 'sub_code', 'sub_category']
+    for col in cat_cols:
+        if col in df.columns:
+            print(f"   Label Encoding: {col}")
+            le = LabelEncoder()
+            df[col] = le.fit_transform(df[col].astype(str))
 
     # BÂY GIỜ mới tiến hành tách dữ liệu
     train_only = df[df['is_test'] == 0].copy()
@@ -51,7 +61,7 @@ def main(retrain=False):
             
     print("\n4. Feature Selection & Model Deployment...")
     blacklist = ['code', 'sub_code', 'sub_category']
-    exclude = ['id', 'y_target', 'weight', 'ts_index', 'is_test', 't1_end'] + blacklist
+    exclude = ['id', 'y_target', 'weight', 'ts_index', 'is_test', 't1_end']
     features = [c for c in train_only.columns if c not in exclude]
     
     # Drop constant columns

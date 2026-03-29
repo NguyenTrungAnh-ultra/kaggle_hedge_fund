@@ -169,9 +169,6 @@ class Fractional_Differencer:
         import gc
         print(f"\n--- BẮT ĐẦU XỬ LÝ DỪNG PHÂN SỐ: AFML FRACTIONAL DIFFERENCER ---")
         start_time = time.time()
-        
-        # # THÊM VÀO ĐÂY: Điền 0 cho các cột cần tính toán để tránh lây lan NaN khi convolve
-        # df[features_list] = df[features_list].fillna(0)
 
         # Đảm bảo sắp xếp thời gian cho từng group
         df = df.sort_values(['code', 'sub_code', 'horizon', 'ts_index']).reset_index(drop=True)

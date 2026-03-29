@@ -10,8 +10,9 @@ import time
 warnings.filterwarnings('ignore')
 
 # --- PATHS & LOGGING SETUP ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, 'ts-forecasting')
+BASE_DIR = os.path.dirname(os.path.abspath(__file__)) # f:\Projects\hege_fund_kaggle\sus\
+PROJECT_ROOT = os.path.dirname(BASE_DIR)
+DATA_DIR = os.path.join(PROJECT_ROOT, 'ts-forecasting')
 INPUT_FILE = os.path.join(DATA_DIR, 'train.parquet')
 LOG_DIR = os.path.join(BASE_DIR, 'logs')
 

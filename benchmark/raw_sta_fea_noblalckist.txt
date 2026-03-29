@@ -1,0 +1,265 @@
+1. Loading dataset...
+Dataset shape: (5337414, 216)
+Label Encoding: code
+Label Encoding: sub_code
+Label Encoding: sub_category
+
+2. Splitting Hold-out Test (Chronological 80/20)...
+Purging 15142 leaking samples from Train overlapping the Test set...
+Final Train shape: (4106607, 217)
+Final Test shape : (1215665, 217)
+Scanning 212 features for constant or all-0/all-1 flag columns...
+Total modeling features: 212
+Loaded parameters from f:\Projects\hege_fund_kaggle\models_param\lgb_best_param.json
+
+
+4. Starting Leak-Free Purged K-Fold Training with Best Parameters...
+
+--- Fold 1 ---
+Inner Train samples: 3447495 | Inner Val samples: 598671
+Saved model to f:\Projects\hege_fund_kaggle\models_param\lgbm_fold_1.txt
+Fold 1 Weighted RMSE: 0.16018
+
+--- Fold 2 ---
+Inner Train samples: 3278400 | Inner Val samples: 740696
+Saved model to f:\Projects\hege_fund_kaggle\models_param\lgbm_fold_2.txt
+Fold 2 Weighted RMSE: 0.10179
+
+--- Fold 3 ---
+Inner Train samples: 3174260 | Inner Val samples: 841190
+Saved model to f:\Projects\hege_fund_kaggle\models_param\lgbm_fold_3.txt
+Fold 3 Weighted RMSE: 0.12556
+
+--- Fold 4 ---
+Inner Train samples: 3062177 | Inner Val samples: 937200
+Saved model to f:\Projects\hege_fund_kaggle\models_param\lgbm_fold_4.txt
+Fold 4 Weighted RMSE: 0.06846
+
+--- Fold 5 ---
+Inner Train samples: 3103524 | Inner Val samples: 988850
+Saved model to f:\Projects\hege_fund_kaggle\models_param\lgbm_fold_5.txt
+Fold 5 Weighted RMSE: 0.12071
+
+5. Evaluating Ensemble on Test Set...
+==> WEIGHTED RMSE SCORE (Test Set)       : 0.110590
+
+=== FINAL TEST SET EVALUATION ===
+Method: Leak-Free Purged K-Fold (Chronological Train/Test + Validation)
+Weighted RMSE Score: 0.110590
+
+Note: Models have been saved to 'models_param' directory.
+
+Top 20 Features:
+                     feature   importance
+                     horizon 6.059785e+07
+                sub_category 4.638464e+07
+                  feature_al 1.955935e+07
+                  feature_bp 1.235780e+07
+                   feature_u 1.207898e+07
+                  feature_cf 1.146201e+07
+                  feature_am 1.109063e+07
+                  feature_ao 9.378876e+06
+                   feature_v 9.374436e+06
+                  feature_aq 8.988586e+06
+                  feature_cg 8.483642e+06
+                  feature_as 7.625815e+06
+                  feature_ai 6.802551e+06
+                   feature_m 5.938859e+06
+                  feature_cb 5.410936e+06
+                  feature_by 5.302264e+06
+                  feature_bz 4.592459e+06
+        feature_by_sta_lag_1 4.589892e+06
+                   feature_h 4.301092e+06
+                  feature_bl 4.199248e+06
+                  feature_ar 3.857015e+06
+                  feature_ce 3.640763e+06
+                   feature_i 3.436725e+06
+                   feature_l 3.365076e+06
+                  feature_an 3.314576e+06
+                  feature_bg 2.872866e+06
+                   feature_z 2.096320e+06
+                  feature_bq 1.834941e+06
+                   feature_j 1.726163e+06
+                  feature_cd 1.526733e+06
+                   feature_k 1.420241e+06
+                  feature_ca 1.214074e+06
+                  feature_cc 1.211851e+06
+                  feature_ad 1.064261e+06
+        feature_am_sta_lag_1 1.046723e+06
+                  feature_bt 9.945870e+05
+               feature_j_sta 8.940189e+05
+                  feature_ap 8.803917e+05
+       feature_al_sta_lag_25 8.491611e+05
+        feature_by_sta_lag_3 8.352911e+05
+                  feature_af 7.942521e+05
+              feature_cc_sta 7.922737e+05
+                   feature_a 7.657291e+05
+                  feature_aj 7.539889e+05
+              feature_cb_sta 7.091309e+05
+                  feature_bd 7.065322e+05
+                  feature_az 6.742325e+05
+                  feature_bn 6.614769e+05
+                   feature_r 4.889369e+05
+                  feature_bx 4.796200e+05
+                  feature_bm 4.771218e+05
+              feature_aq_sta 4.764355e+05
+                   feature_y 4.668345e+05
+                  feature_ac 4.559454e+05
+              feature_ai_sta 4.032075e+05
+               feature_v_sta 3.982777e+05
+                  feature_be 3.878738e+05
+                  feature_bu 3.877420e+05
+               feature_h_sta 3.713228e+05
+                  feature_bh 3.383739e+05
+               feature_m_sta 3.264226e+05
+                  feature_bo 2.940055e+05
+        feature_cg_sta_lag_1 2.705776e+05
+                  feature_bs 2.675064e+05
+              feature_ce_sta 2.564480e+05
+                  feature_br 2.423306e+05
+                  feature_ag 2.400740e+05
+                  feature_bf 2.383127e+05
+                    sub_code 2.295479e+05
+              feature_am_sta 2.291066e+05
+              feature_ch_sta 2.260313e+05
+              feature_ao_sta 2.214766e+05
+                  feature_bv 2.133316e+05
+                  feature_ae 2.082400e+05
+feature_by_sta_sector_zscore 2.065231e+05
+        feature_am_sta_lag_3 1.978191e+05
+              feature_as_sta 1.934962e+05
+              feature_cf_sta 1.880410e+05
+                   feature_n 1.622593e+05
+       feature_al_sta_lag_10 1.565345e+05
+              feature_aj_sta 1.564914e+05
+              feature_ar_sta 1.521105e+05
+                  feature_bw 1.444539e+05
+        feature_by_sta_lag_5 1.434667e+05
+               feature_k_sta 1.427284e+05
+              feature_cg_sta 1.423203e+05
+                  feature_ak 1.419021e+05
+              feature_bn_sta 1.415582e+05
+              feature_bq_sta 1.396051e+05
+        feature_cg_sta_lag_3 1.382866e+05
+                  feature_ah 1.270209e+05
+              feature_an_sta 1.253574e+05
+               feature_a_sta 1.233290e+05
+ feature_k_sta_sector_zscore 1.215186e+05
+                  feature_at 1.207651e+05
+              feature_bz_sta 1.205188e+05
+               feature_u_sta 1.165178e+05
+       feature_am_sta_lag_10 1.127215e+05
+                  feature_ay 1.116591e+05
+       feature_by_sta_lag_10 1.114978e+05
+              feature_al_sta 1.107606e+05
+        feature_al_sta_lag_5 1.077527e+05
+        feature_al_sta_lag_1 1.040210e+05
+        feature_cg_sta_lag_5 9.454931e+04
+        feature_al_sta_lag_3 8.241664e+04
+               feature_i_sta 7.930526e+04
+              feature_ad_sta 7.673219e+04
+              feature_by_sta 7.393269e+04
+       feature_am_sta_lag_25 7.293172e+04
+               feature_r_sta 7.137456e+04
+        feature_am_sta_lag_5 6.290824e+04
+                   feature_q 5.980171e+04
+                   feature_s 5.693990e+04
+                        code 5.441096e+04
+              feature_af_sta 5.250939e+04
+              feature_ca_sta 5.102182e+04
+       feature_cg_sta_lag_10 4.855948e+04
+              feature_bg_sta 4.827224e+04
+       feature_by_sta_lag_25 4.803493e+04
+                   feature_p 4.676491e+04
+              feature_bh_sta 4.452961e+04
+              feature_az_sta 4.252027e+04
+              feature_cd_sta 4.216134e+04
+               feature_n_sta 4.200296e+04
+       feature_cg_sta_lag_25 3.807745e+04
+              feature_bm_sta 3.508573e+04
+              feature_bo_sta 3.459746e+04
+                  feature_au 3.390767e+04
+              feature_bd_sta 3.269518e+04
+              feature_bp_sta 3.193070e+04
+              feature_bx_sta 3.075129e+04
+              feature_bf_sta 3.050645e+04
+               feature_z_sta 2.836879e+04
+               feature_y_sta 2.723299e+04
+              feature_be_sta 2.722623e+04
+              feature_bl_sta 2.531081e+04
+                  feature_av 2.512321e+04
+              feature_ae_sta 1.985414e+04
+                   feature_x 1.915305e+04
+                  feature_ab 1.882378e+04
+                  feature_aw 1.795601e+04
+                  feature_bk 1.791474e+04
+                  feature_ba 1.790926e+04
+                  feature_ch 1.489456e+04
+                  feature_bc 1.442526e+04
+                  feature_bj 1.369107e+04
+              feature_ac_sta 1.257329e+04
+                  feature_ax 1.222899e+04
+               feature_q_sta 1.203640e+04
+                   feature_t 1.128243e+04
+              feature_ab_sta 1.072993e+04
+              feature_ak_sta 9.913102e+03
+                  feature_aa 9.290800e+03
+              feature_ah_sta 8.666922e+03
+               feature_p_sta 8.284036e+03
+              feature_av_sta 8.192638e+03
+              feature_br_sta 7.807920e+03
+              feature_ax_sta 4.941320e+03
+           is_nan_feature_ay 4.676940e+03
+              feature_ba_sta 3.993424e+03
+              feature_ag_sta 3.665936e+03
+              feature_bt_sta 3.525782e+03
+              feature_at_sta 3.405802e+03
+                   feature_e 3.044860e+03
+              feature_bv_sta 2.936500e+03
+                  feature_bb 2.462980e+03
+                  feature_bi 1.934440e+03
+              feature_bu_sta 1.883972e+03
+              feature_ap_sta 1.454550e+03
+                   feature_b 1.430334e+03
+                   feature_o 1.285598e+03
+              feature_au_sta 1.282536e+03
+              feature_bb_sta 1.105950e+03
+               feature_o_sta 8.867260e+02
+                   feature_c 8.300960e+02
+                   feature_f 0.000000e+00
+                   feature_w 0.000000e+00
+                   feature_g 0.000000e+00
+                   feature_d 0.000000e+00
+           is_nan_feature_by 0.000000e+00
+              feature_bc_sta 0.000000e+00
+              feature_ay_sta 0.000000e+00
+               feature_s_sta 0.000000e+00
+               feature_t_sta 0.000000e+00
+               feature_w_sta 0.000000e+00
+           is_nan_feature_aj 0.000000e+00
+           is_nan_feature_at 0.000000e+00
+           is_nan_feature_al 0.000000e+00
+           is_nan_feature_ce 0.000000e+00
+           is_nan_feature_cd 0.000000e+00
+            is_nan_feature_n 0.000000e+00
+            is_nan_feature_r 0.000000e+00
+            is_nan_feature_j 0.000000e+00
+            is_nan_feature_k 0.000000e+00
+            is_nan_feature_h 0.000000e+00
+            is_nan_feature_i 0.000000e+00
+           is_nan_feature_ag 0.000000e+00
+           is_nan_feature_af 0.000000e+00
+           is_nan_feature_ae 0.000000e+00
+           is_nan_feature_ad 0.000000e+00
+           is_nan_feature_aw 0.000000e+00
+           is_nan_feature_cg 0.000000e+00
+               feature_e_sta 0.000000e+00
+               feature_l_sta 0.000000e+00
+               feature_c_sta 0.000000e+00
+           is_nan_feature_cf 0.000000e+00
+              feature_bs_sta 0.000000e+00
+               feature_x_sta 0.000000e+00
+              feature_aa_sta 0.000000e+00
+              feature_bi_sta 0.000000e+00
+              feature_aw_sta 0.000000e+00
+feature_at_sta_sector_zscore 0.000000e+00

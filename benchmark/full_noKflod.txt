@@ -1,0 +1,81 @@
+1. Loading dataset...
+Dataset shape: (5337414, 216)
+Label Encoding: code
+Label Encoding: sub_code
+Label Encoding: sub_category
+
+2. Splitting Hold-out Test (Chronological 80/20)...
+Purging 15142 leaking samples from Train overlapping the Test set...
+Final Train shape: (4106607, 217)
+Final Test shape : (1215665, 217)
+Scanning 212 features for constant or all-0/all-1 flag columns...
+Total modeling features: 212
+
+3. Starting Optuna Hyperparameter Tuning (using 20% sample + Single Split)...
+[I 2026-03-28 16:27:34,355] A new study created in memory with name: no-name-006dc905-a1ef-4a0d-ac57-3f5a5efbc165
+[I 2026-03-28 16:27:40,700] Trial 0 finished with value: 0.06311709645849738 and parameters: {'max_depth': 4, 'num_leaves': 11, 'learning_rate': 0.009935392188985573, 'min_data_in_leaf': 1336, 'lambda_l1': 0.0022411900000609934, 'lambda_l2': 23.38253033492466, 'min_sum_hessian_in_leaf': 4.14589078489014, 'feature_fraction': 0.48523514277814406, 'bagging_fraction': 0.5526027739011726, 'bagging_freq': 1, 'extra_trees': False}. Best is trial 0 with value: 0.06311709645849738.
+[I 2026-03-28 16:27:47,472] Trial 1 finished with value: 0.06005021148754409 and parameters: {'max_depth': 5, 'num_leaves': 12, 'learning_rate': 0.016638473605570435, 'min_data_in_leaf': 4293, 'lambda_l1': 5.661282854732169, 'lambda_l2': 0.11487860838155337, 'min_sum_hessian_in_leaf': 1.5588530089324417, 'feature_fraction': 0.545253050143148, 'bagging_fraction': 0.6748040589271571, 'bagging_freq': 1, 'extra_trees': False}. Best is trial 0 with value: 0.06311709645849738.
+[I 2026-03-28 16:27:54,623] Trial 2 finished with value: 0.0413161308471537 and parameters: {'max_depth': 3, 'num_leaves': 8, 'learning_rate': 0.012396349841300558, 'min_data_in_leaf': 4393, 'lambda_l1': 3.504159785192142, 'lambda_l2': 4.8016835382867615, 'min_sum_hessian_in_leaf': 0.04739120074829587, 'feature_fraction': 0.7384710936105108, 'bagging_fraction': 0.86862980173475, 'bagging_freq': 1, 'extra_trees': True}. Best is trial 0 with value: 0.06311709645849738.
+[I 2026-03-28 16:28:00,929] Trial 3 finished with value: 0.04049136468732058 and parameters: {'max_depth': 3, 'num_leaves': 8, 'learning_rate': 0.010037566163408042, 'min_data_in_leaf': 3711, 'lambda_l1': 0.7160392189063295, 'lambda_l2': 0.16629845457659959, 'min_sum_hessian_in_leaf': 2.614919891287902, 'feature_fraction': 0.7823633747073077, 'bagging_fraction': 0.6771930405713418, 'bagging_freq': 5, 'extra_trees': True}. Best is trial 0 with value: 0.06311709645849738.
+[I 2026-03-28 16:28:08,039] Trial 4 finished with value: 0.054739978869278144 and parameters: {'max_depth': 5, 'num_leaves': 17, 'learning_rate': 0.027128266437350453, 'min_data_in_leaf': 4346, 'lambda_l1': 0.1559783627720862, 'lambda_l2': 1.900733699266601, 'min_sum_hessian_in_leaf': 3.9630486637883937, 'feature_fraction': 0.7128000942632731, 'bagging_fraction': 0.596218749313687, 'bagging_freq': 1, 'extra_trees': True}. Best is trial 0 with value: 0.06311709645849738.
+[I 2026-03-28 16:28:16,638] Trial 5 finished with value: 0.06965870314663647 and parameters: {'max_depth': 6, 'num_leaves': 47, 'learning_rate': 0.017900780775122527, 'min_data_in_leaf': 2476, 'lambda_l1': 4.210217868772777, 'lambda_l2': 0.2175889452019274, 'min_sum_hessian_in_leaf': 0.0018724877939690218, 'feature_fraction': 0.6062224951370034, 'bagging_fraction': 0.7102047679785404, 'bagging_freq': 4, 'extra_trees': False}. Best is trial 5 with value: 0.06965870314663647.
+[I 2026-03-28 16:28:22,683] Trial 6 finished with value: 0.027260361105685825 and parameters: {'max_depth': 5, 'num_leaves': 19, 'learning_rate': 0.006395292899709027, 'min_data_in_leaf': 4327, 'lambda_l1': 3.8089708573375036, 'lambda_l2': 3.526875840547865, 'min_sum_hessian_in_leaf': 0.0034327475022854726, 'feature_fraction': 0.42791305300110366, 'bagging_fraction': 0.5915088476093706, 'bagging_freq': 3, 'extra_trees': True}. Best is trial 5 with value: 0.06965870314663647.
+[I 2026-03-28 16:28:29,322] Trial 7 finished with value: 0.057829671029622214 and parameters: {'max_depth': 6, 'num_leaves': 25, 'learning_rate': 0.018313288213305988, 'min_data_in_leaf': 3015, 'lambda_l1': 5.693020170947644, 'lambda_l2': 0.20271440094176574, 'min_sum_hessian_in_leaf': 0.010212106662496131, 'feature_fraction': 0.6394140639928859, 'bagging_fraction': 0.5215415524275955, 'bagging_freq': 5, 'extra_trees': False}. Best is trial 5 with value: 0.06965870314663647.
+[I 2026-03-28 16:28:34,869] Trial 8 finished with value: 0.03127217727066021 and parameters: {'max_depth': 3, 'num_leaves': 8, 'learning_rate': 0.008117718380027355, 'min_data_in_leaf': 3036, 'lambda_l1': 4.714225464593856, 'lambda_l2': 0.7230395348236762, 'min_sum_hessian_in_leaf': 0.5131542711176506, 'feature_fraction': 0.49380681465142245, 'bagging_fraction': 0.5176567188852775, 'bagging_freq': 3, 'extra_trees': True}. Best is trial 5 with value: 0.06965870314663647.
+[I 2026-03-28 16:28:41,942] Trial 9 finished with value: 0.0737576043878784 and parameters: {'max_depth': 5, 'num_leaves': 17, 'learning_rate': 0.01900725717324239, 'min_data_in_leaf': 2473, 'lambda_l1': 0.3624399038507163, 'lambda_l2': 10.282782776816536, 'min_sum_hessian_in_leaf': 0.056114950008376116, 'feature_fraction': 0.6565277560153967, 'bagging_fraction': 0.6820450311964011, 'bagging_freq': 5, 'extra_trees': False}. Best is trial 9 with value: 0.0737576043878784.
+[I 2026-03-28 16:28:48,938] Trial 10 finished with value: 0.08110205434723797 and parameters: {'max_depth': 4, 'num_leaves': 10, 'learning_rate': 0.04933064899556969, 'min_data_in_leaf': 1497, 'lambda_l1': 0.006402262367279969, 'lambda_l2': 44.45567057029357, 'min_sum_hessian_in_leaf': 0.10109784071180787, 'feature_fraction': 0.663277876089527, 'bagging_fraction': 0.8112227047730143, 'bagging_freq': 4, 'extra_trees': False}. Best is trial 10 with value: 0.08110205434723797.
+[I 2026-03-28 16:28:54,790] Trial 11 finished with value: 0.08066361904505108 and parameters: {'max_depth': 4, 'num_leaves': 10, 'learning_rate': 0.04868774873788443, 'min_data_in_leaf': 1445, 'lambda_l1': 0.006193746305991199, 'lambda_l2': 45.1799779140408, 'min_sum_hessian_in_leaf': 0.10611067677434183, 'feature_fraction': 0.6662131214262526, 'bagging_fraction': 0.8182212954687037, 'bagging_freq': 4, 'extra_trees': False}. Best is trial 10 with value: 0.08110205434723797.
+[I 2026-03-28 16:29:03,100] Trial 12 finished with value: 0.09784140046571166 and parameters: {'max_depth': 4, 'num_leaves': 10, 'learning_rate': 0.04957524818500306, 'min_data_in_leaf': 1117, 'lambda_l1': 0.0068162765843610825, 'lambda_l2': 40.051451756126184, 'min_sum_hessian_in_leaf': 0.24886202796573353, 'feature_fraction': 0.6871360413574175, 'bagging_fraction': 0.8481039964718046, 'bagging_freq': 4, 'extra_trees': False}. Best is trial 12 with value: 0.09784140046571166.
+[I 2026-03-28 16:29:10,176] Trial 13 finished with value: 0.10402770880444771 and parameters: {'max_depth': 4, 'num_leaves': 10, 'learning_rate': 0.04936127527363225, 'min_data_in_leaf': 1038, 'lambda_l1': 0.016337680271816476, 'lambda_l2': 47.37912087965011, 'min_sum_hessian_in_leaf': 0.31430996001910344, 'feature_fraction': 0.720794266937637, 'bagging_fraction': 0.8030000122524268, 'bagging_freq': 4, 'extra_trees': False}. Best is trial 13 with value: 0.10402770880444771.
+[I 2026-03-28 16:29:17,767] Trial 14 finished with value: 0.08985255117929271 and parameters: {'max_depth': 4, 'num_leaves': 10, 'learning_rate': 0.03275337790769205, 'min_data_in_leaf': 1054, 'lambda_l1': 0.02994772664303859, 'lambda_l2': 14.772722628755563, 'min_sum_hessian_in_leaf': 0.3918968827820289, 'feature_fraction': 0.7923096533376198, 'bagging_fraction': 0.7673587419300258, 'bagging_freq': 2, 'extra_trees': False}. Best is trial 13 with value: 0.10402770880444771.
+[I 2026-03-28 16:29:25,168] Trial 15 finished with value: 0.07230170384700756 and parameters: {'max_depth': 4, 'num_leaves': 9, 'learning_rate': 0.03258776549947068, 'min_data_in_leaf': 1924, 'lambda_l1': 0.03457654719613588, 'lambda_l2': 8.013986514605458, 'min_sum_hessian_in_leaf': 0.36428459407669733, 'feature_fraction': 0.7243566029378925, 'bagging_fraction': 0.8984486537584303, 'bagging_freq': 4, 'extra_trees': False}. Best is trial 13 with value: 0.10402770880444771.
+[I 2026-03-28 16:29:31,298] Trial 16 finished with value: 0.06539455541062723 and parameters: {'max_depth': 3, 'num_leaves': 8, 'learning_rate': 0.037251600725944335, 'min_data_in_leaf': 2031, 'lambda_l1': 0.021992167164000626, 'lambda_l2': 22.188929028626802, 'min_sum_hessian_in_leaf': 0.017403864816743952, 'feature_fraction': 0.566977864044247, 'bagging_fraction': 0.7626554179900134, 'bagging_freq': 3, 'extra_trees': False}. Best is trial 13 with value: 0.10402770880444771.
+[I 2026-03-28 16:29:38,501] Trial 17 finished with value: 0.07452025557051455 and parameters: {'max_depth': 4, 'num_leaves': 9, 'learning_rate': 0.024405566856792762, 'min_data_in_leaf': 1906, 'lambda_l1': 0.001088067056867235, 'lambda_l2': 1.448784764207549, 'min_sum_hessian_in_leaf': 1.1162013959463368, 'feature_fraction': 0.7018447501906038, 'bagging_fraction': 0.8365287453907596, 'bagging_freq': 2, 'extra_trees': False}. Best is trial 13 with value: 0.10402770880444771.
+[I 2026-03-28 16:29:46,156] Trial 18 finished with value: 0.11042100918495469 and parameters: {'max_depth': 5, 'num_leaves': 14, 'learning_rate': 0.041752314626818325, 'min_data_in_leaf': 1062, 'lambda_l1': 0.007077367861535501, 'lambda_l2': 49.39235025822461, 'min_sum_hessian_in_leaf': 8.049123400977605, 'feature_fraction': 0.7581347122991664, 'bagging_fraction': 0.7625347620202667, 'bagging_freq': 4, 'extra_trees': False}. Best is trial 18 with value: 0.11042100918495469.
+[I 2026-03-28 16:29:52,607] Trial 19 finished with value: 0.03545931117926088 and parameters: {'max_depth': 6, 'num_leaves': 34, 'learning_rate': 0.03802460184401781, 'min_data_in_leaf': 3424, 'lambda_l1': 0.0651709334105027, 'lambda_l2': 0.6082665590377928, 'min_sum_hessian_in_leaf': 8.144041760945296, 'feature_fraction': 0.7624389293237751, 'bagging_fraction': 0.7485189460469714, 'bagging_freq': 3, 'extra_trees': False}. Best is trial 18 with value: 0.11042100918495469.
+
+Best trial:
+  Value: 0.11042100918495469
+  Params:
+    max_depth: 5
+    num_leaves: 14
+    learning_rate: 0.041752314626818325
+    min_data_in_leaf: 1062
+    lambda_l1: 0.007077367861535501
+    lambda_l2: 49.39235025822461
+    min_sum_hessian_in_leaf: 8.049123400977605
+    feature_fraction: 0.7581347122991664
+    bagging_fraction: 0.7625347620202667
+    bagging_freq: 4
+    extra_trees: False
+
+4. Starting Single-Split Training with Best Parameters...
+Train samples: 3103524 | Val samples: 988850
+Saved model to f:\Projects\hege_fund_kaggle\models_param\lgbm_single.txt
+==> WEIGHTED RMSE SCORE (Test Set): 0.092039
+
+=== FINAL TEST SET EVALUATION (NO K-FOLD) ===
+Weighted RMSE Score: 0.092039
+
+Top 20 Features:
+             feature   importance
+        sub_category 1.693233e+07
+             horizon 1.560829e+07
+          feature_al 5.765673e+06
+          feature_cf 3.991896e+06
+          feature_by 3.266809e+06
+          feature_as 3.185333e+06
+           feature_v 2.659545e+06
+          feature_am 2.602134e+06
+          feature_cg 2.598328e+06
+           feature_m 2.449884e+06
+          feature_ai 2.248989e+06
+          feature_bp 2.192274e+06
+          feature_cb 2.095304e+06
+feature_by_sta_lag_1 1.791615e+06
+          feature_aq 1.761109e+06
+           feature_u 1.633573e+06
+          feature_ao 1.500827e+06
+           feature_l 1.457321e+06
+          feature_bg 1.163149e+06
+          feature_bz 1.107733e+06
