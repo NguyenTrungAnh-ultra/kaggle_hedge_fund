@@ -173,19 +173,19 @@ class Fractional_Differencer:
         # Đảm bảo sắp xếp thời gian cho từng group
         df = df.sort_values(['code', 'sub_code', 'horizon', 'ts_index']).reset_index(drop=True)
         grouped = df.groupby(['code', 'sub_code', 'horizon'], sort=False)
-        
-        # Chọn group lớn nhất để ước lượng d chung cho feature (tối ưu tốc độ)
-        group_sizes = grouped.size()
-        top_group_keys = group_sizes.idxmax()
-        test_idx = df[(df['code'] == top_group_keys[0]) & 
-                      (df['sub_code'] == top_group_keys[1]) & 
-                      (df['horizon'] == top_group_keys[2])].index
-                      
+        train_df = df[df['is_test'] == 0] if 'is_test' in df.columns else df
+     
+        train_grouped = train_df.groupby(['code', 'sub_code', 'horizon'], sort=False)
+        top_group_keys = train_grouped.size().idxmax()
+    
+        train_group_data = train_df[(train_df['code'] == top_group_keys[0]) & 
+                                    (train_df['sub_code'] == top_group_keys[1]) & 
+                                    (train_df['horizon'] == top_group_keys[2])]
         for idx, col in enumerate(features_list, 1):
             start_col = time.time()
             
-            # Tìm d tối ưu trên group đại diện
-            test_series = df.loc[test_idx, col]
+            # 4. Sử dụng trực tiếp dữ liệu đã chuẩn bị
+            test_series = train_group_data[col]
             opt_d = self.find_optimal_d(test_series)
             
             print(f"[{idx}/{len(features_list)}] {col:15} | d_opt: {opt_d:.1f} ", end='', flush=True)

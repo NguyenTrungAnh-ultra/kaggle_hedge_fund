@@ -6,6 +6,7 @@ Dưới đây là bảng so sánh hiệu năng của các chiến lược tiền
 
 | Strategy | Score (Weighted R) ↑ | Train Samples | Test Samples | No. Features | Key Features | Note |
 | :--- | :---: | :---: | :---: | :---: | :--- | :--- |
+| **Lightgbm_Optuna_212** | **0.119293** | 4,106,607 | 1,215,665 | 212 | `horizon`, `sub_category`, `feature_al` | Best Optuna Params + 5-Fold Purged CV |
 | **nam.py** | **0.136134** | 4,000,000+ | 1,000,000+ | 110 | `horizon`, `sub_category` | RAW Data + fillna(0) + No Purge |
 | **raw_sta_fea_noblacklist** | 0.110590 | 4,106,607 | 1,215,665 | 212 | `horizon`, `sub_category` | No Blacklist + Raw + Sta + Fea |
 | **withraw_sta_fea** | 0.085471 | 4,106,607 | 1,215,665 | 208 | `feature_al`, `feature_by_sta_lag_1` | Raw + Flag NaN + Sta + Adv Features |
@@ -66,6 +67,8 @@ Trong quá trình thực nghiệm, mỗi chiến lược đều bộc lộ nhữ
 ### D. Độ tin cậy của Cross-Validation - `nokfold`
 *   **Vấn đề:** Các bản chạy nhanh (single split) chỉ đánh giá trên 1 cửa sổ thời gian duy nhất. 
 *   **Hệ quả:** Điểm số phụ thuộc rất lớn vào việc giai đoạn Val đó có "dễ đoán" hay không. Bản **5-Fold Purged CV** vẫn là thước đo đáng tin cậy nhất về độ ổn định (Generalization).
+*   **Hiện tượng "High Overall but Local Failure":** Trong cấu hình `Lightgbm_Optuna_212`, điểm trung bình CV đạt mức cao (**0.119**), nhưng quan sát chi tiết cho thấy sự chênh lệch cực lớn giữa các Fold (Fold 1: 0.16 vs Fold 3: 0.04).
+    *   **Nguyên nhân Thất bại Cục bộ (Fold 3):** Có thể do **Regime Shift** (thay đổi trạng thái thị trường) hoặc lỗi dữ liệu cục bộ trong khoảng thời gian đó. Dù điểm Overall cao nhờ các Fold khác "gánh", nhưng việc một Fold sập về 0 cảnh báo rằng Model vẫn chưa thực sự mạnh (Robust) trước mọi biến động lịch sử. Đây là dấu hiệu cho thấy cần tinh chỉnh thêm về đặc trưng dừng (Stationary) hoặc kiểm soát Outliers chặt chẽ hơn.
 
 ---
 
