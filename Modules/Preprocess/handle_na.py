@@ -4,6 +4,7 @@ import os
 import time
 import sys
 import gc
+from joblib import Parallel, delayed
 
 # Paths
 # BASE_DIR should be f:\Projects\hege_fund_kaggle
@@ -18,68 +19,92 @@ class NaN_Handler:
     Module Xử lý Dữ liệu khuyết thiếu (NaN Imputation) theo 4 lớp bảo vệ.
     Đảm bảo: Zero Data Leakage, Spatial Isolation, Longitudinal Integrity.
     """
-    def process(self, df: pd.DataFrame, features_list: list) -> pd.DataFrame:
-        print(f"\n--- BẮT ĐẦU XỬ LÝ NAN: NAN HANDLER ---")
+    def _generate_indicators(self, df_values, features_list):
+        """Hàm helper để tạo indicators song song"""
+        def process_col(col_idx):
+            col_name = features_list[col_idx]
+            vals = df_values[:, col_idx]
+            mask = np.isnan(vals)
+            if np.any(mask) and not np.all(mask): # Chỉ tạo nếu có NaN và không phải toàn bộ là NaN
+                return f'is_nan_{col_name}', mask.astype(np.int8)
+            return None
+
+        print(f"   - Đang tạo Missingness Indicators song song...")
+        results = Parallel(n_jobs=-1)(delayed(process_col)(i) for i in range(len(features_list)))
+        return {res[0]: res[1] for res in results if res is not None}
+
+    def _impute_values(self, df: pd.DataFrame, features_list: list) -> pd.DataFrame:
+        """Hàm riêng để xử lý điền giá trị (Imputation) - Có thể bật tắt"""
+        # Lớp 3: Longitudinal Forward Fill
+        print(f"   - [IMPUTE] Lớp 3: Đang thực hiện Forward Fill theo Group...")
+        df.sort_values(by=['code', 'sub_code', 'horizon', 'ts_index'], inplace=True)
+        df[features_list] = df.groupby(['code', 'sub_code', 'horizon'], sort=False)[features_list].ffill(limit=20)
+        gc.collect()
+
+        # Lớp 4: Cross-sectional Median Fill
+        print(f"   - [IMPUTE] Lớp 4: Đang thực hiện Median Fill theo mặt cắt thời gian...")
+        na_mask = df[features_list].isna()
+        if na_mask.any().any():
+            medians = df.groupby(['ts_index', 'horizon'])[features_list].median()
+            df.set_index(['ts_index', 'horizon'], inplace=True)
+            df[features_list] = df[features_list].fillna(medians)
+            df.reset_index(inplace=True)
+            del medians
+            gc.collect()
+        return df
+
+    def process(self, df: pd.DataFrame, features_list: list, impute: bool = False) -> pd.DataFrame:
+        print(f"\n--- BẮT ĐẦU XỬ LÝ NAN: NAN HANDLER (Parallel Optimized) ---")
         start_time = time.time()
         
-        # Bước 1: Phân tích NaN ban đầu
-        na_before = df[features_list].isna().sum()
-        features_with_na = na_before[na_before > 0].index.tolist()
+        # Bước 1: Phân tích và tạo Indicators song song (Luôn chạy để model biết chỗ nào bị NaN)
+        indicators_dict = self._generate_indicators(df[features_list].values, features_list)
+        if indicators_dict:
+            # Dùng concat để tránh SettingWithCopyWarning và nhanh hơn
+            df = pd.concat([df, pd.DataFrame(indicators_dict, index=df.index)], axis=1)
         
-        if not features_with_na:
-            print("Không tìm thấy NaNs trong features.")
-            return df
-            
-        print(f"Phát hiện {len(features_with_na)} features chứa NaNs.")
-        
-        # Lớp 2: gắn cờ na (Missingness Indicator)
-        for col in features_with_na:
-            indicator = df[col].isna().astype(np.int8)
-            # Thêm bước: Nếu toàn 0 hoặc 1 (không có sự biến thiên) thì không lấy cột đó
-            if indicator.nunique() > 1:
-                df[f'is_nan_{col}'] = indicator
-        
-        # # Lớp 3: Vá lỗi Trục Dọc (Longitudinal Forward Fill)
+        # Bước 2: Chỉ thực hiện điền giá trị nếu được yêu cầu (Mặc định là False)
+        if impute:
+            df = self._impute_values(df, features_list)
+        else:
+            print(f"   - Bỏ qua bước Imputation (Lớp 3 & 4) theo yêu cầu người dùng.")
 
-        # # Đảm bảo sắp xếp chuẩn trước khi ffill (Memory efficient)
-        # df.sort_values(by=['code', 'horizon', 'ts_index'], inplace=True)
-        # gc.collect()
-        
-        # df[features_with_na] = df.groupby(['code', 'sub_code', 'horizon'])[features_with_na].ffill(limit=50)
-        # gc.collect()
-        
-        # # Lớp 4: Khắc phục Cold Start bằng Trung vị (Cross-sectional Median Fill)
-        # na_after_l3 = df[features_with_na].isna().sum()
-        # features_still_na = na_after_l3[na_after_l3 > 0].index.tolist()
-        
-        # if features_still_na:
-        #     # Điền trung vị theo mặt cắt ts_index và horizon
-        #     medians_ts_horizon = df.groupby(['ts_index', 'horizon'])[features_still_na].transform('median')
-        #     df[features_still_na] = df[features_still_na].fillna(medians_ts_horizon)
-        #     del medians_ts_horizon
-            gc.collect()
-            
-        # Lớp 5: Hậu xử lý - Loại bỏ các cột hằng số (toàn 0 hoặc toàn 1)
-        # Loại bỏ các features và indicators không mang thông tin
+        # Bước 3: Hậu xử lý - Loại bỏ cột hằng số nhanh bằng NumPy
+        print(f"   - Lớp 5: Loại bỏ các cột không mang thông tin...")
         cols_to_check = [c for c in df.columns if c in features_list or c.startswith('is_nan_')]
-        blacklist = [
-        "is_nan_feature_w", "is_nan_feature_v", "is_nan_feature_p", "is_nan_feature_o",
-        "is_nan_feature_l", "is_nan_feature_m", "is_nan_feature_u", "is_nan_feature_t",
-        "is_nan_feature_s", "is_nan_feature_q", "is_nan_feature_ab", "is_nan_feature_x",
-        "is_nan_feature_au", "is_nan_feature_ak", "is_nan_feature_ah", "is_nan_feature_y",
-        "is_nan_feature_aa", "is_nan_feature_z", "is_nan_feature_ac", "is_nan_feature_av",
-        "is_nan_feature_bl", "is_nan_feature_bj", "is_nan_feature_bi", "is_nan_feature_az",
-        "is_nan_feature_ax", "is_nan_feature_cc", "is_nan_feature_bz", "is_nan_feature_ca"
-    ]
-        constant_cols = [c for c in cols_to_check if df[c].nunique() <= 1] + blacklist
         
-        if constant_cols:
-            print(f"Bổ sung: Đã loại bỏ {len(constant_cols)} cột hằng số (toàn 0 hoặc 1).")
-            df = df.drop(columns=constant_cols)
+        def is_constant(col_data):
+            # Dùng numpy check nhanh hơn nunique
+            c_data = col_data.values
+            if c_data.dtype.kind in 'fi': # float or int
+                non_nan = c_data[~np.isnan(c_data)]
+                if len(non_nan) == 0: return True
+                return np.min(non_nan) == np.max(non_nan)
+            return len(np.unique(c_data)) <= 1
+
+        results = Parallel(n_jobs=-1)(delayed(is_constant)(df[c]) for c in cols_to_check)
+        constant_cols = [cols_to_check[i] for i, const in enumerate(results) if const]
+        
+        # Blacklist cũ
+        blacklist = [
+            "is_nan_feature_w", "is_nan_feature_v", "is_nan_feature_p", "is_nan_feature_o",
+            "is_nan_feature_l", "is_nan_feature_m", "is_nan_feature_u", "is_nan_feature_t",
+            "is_nan_feature_s", "is_nan_feature_q", "is_nan_feature_ab", "is_nan_feature_x",
+            "is_nan_feature_au", "is_nan_feature_ak", "is_nan_feature_ah", "is_nan_feature_y",
+            "is_nan_feature_aa", "is_nan_feature_z", "is_nan_feature_ac", "is_nan_feature_av",
+            "is_nan_feature_bl", "is_nan_feature_bj", "is_nan_feature_bi", "is_nan_feature_az",
+            "is_nan_feature_ax", "is_nan_feature_cc", "is_nan_feature_bz", "is_nan_feature_ca"
+        ]
+        
+        final_drop = list(set(constant_cols + [b for b in blacklist if b in df.columns]))
+        if final_drop:
+            print(f"     -> Đã loại bỏ {len(final_drop)} cột hằng số hoặc vô ích.")
+            df.drop(columns=final_drop, inplace=True)
             
         print(f"HOÀN THÀNH XỬ LÝ NAN: {time.time() - start_time:.2f}s")
         print(f"Datashape: {df.shape}")
-        print(f"Tổng NaN hiện tại: {df.isna().sum().sum()}")
+        print(f"Tổng NaN còn lại: {df.isna().sum().sum()}")
+        gc.collect()
         return df
 
 def main():

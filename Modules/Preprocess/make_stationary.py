@@ -5,6 +5,8 @@ import os
 import sys
 import time
 import warnings
+import gc
+from joblib import Parallel, delayed
 
 warnings.filterwarnings('ignore')
 
@@ -139,7 +141,7 @@ class Fractional_Differencer:
                 break
             w.append(w_k)
         # QUAN TRỌNG: Không đảo ngược weights khi dùng np.convolve
-        return np.array(w).astype(np.float32)
+        return np.array(w, dtype=np.float32)
 
     @staticmethod
     def find_optimal_d(series):
@@ -165,68 +167,94 @@ class Fractional_Differencer:
                     continue
         return 1.0
 
+    def _process_single_col(self, col, series_values, group_offsets, is_test_col=None, test_idx=None):
+        """Hàm xử lý cho một cột đơn lẻ, được thiết kế để chạy song song"""
+        start_col = time.time()
+        
+        # 1. Tìm d_opt trên tập train của group đại diện
+        if is_test_col is not None and test_idx is not None:
+            # Lọc group data (test_idx) và chỉ lấy tập train (is_test == 0)
+            mask = (is_test_col == 0)
+            # test_idx là array các index của group đại diện
+            test_series = series_values[test_idx[mask[test_idx]]]
+        else:
+            test_series = series_values[test_idx] if test_idx is not None else series_values
+            
+        opt_d = self.find_optimal_d(pd.Series(test_series))
+        
+        # 2. Thực hiện Differencing
+        res_col = np.full_like(series_values, np.nan, dtype=np.float32)
+        
+        if opt_d < 1.0:
+            w = self.get_weights_ffw(opt_d)
+            w_len = len(w)
+            
+            # Xử lý từng group theo offset đã tính trước (Nhanh hơn groupby.transform)
+            for i in range(len(group_offsets)-1):
+                start, end = group_offsets[i], group_offsets[i+1]
+                g_vals = series_values[start:end]
+                
+                if len(g_vals) >= w_len:
+                    # Fill NaNs đơn giản bằng 0 cho convolve (Dữ liệu đã qua handled_na)
+                    # Sau đó sẽ trả lại NaNs thực tế sau
+                    g_filled = np.copy(g_vals)
+                    nan_mask = np.isnan(g_filled)
+                    if np.any(nan_mask):
+                        g_filled[nan_mask] = 0.0
+                    
+                    # Convolve
+                    diff_vals = np.convolve(g_filled, w, mode='full')[:len(g_vals)]
+                    diff_vals[:w_len-1] = np.nan
+                    diff_vals[nan_mask] = np.nan
+                    res_col[start:end] = diff_vals.astype(np.float32)
+                    
+        elif opt_d == 1.0:
+            for i in range(len(group_offsets)-1):
+                start, end = group_offsets[i], group_offsets[i+1]
+                g_vals = series_values[start:end]
+                if len(g_vals) > 1:
+                    res_col[start+1:end] = np.diff(g_vals).astype(np.float32)
+        
+        return col, res_col, opt_d, (time.time() - start_col)
+
     def process(self, df: pd.DataFrame, features_list: list) -> pd.DataFrame:
-        import gc
-        print(f"\n--- BẮT ĐẦU XỬ LÝ DỪNG PHÂN SỐ: AFML FRACTIONAL DIFFERENCER ---")
+        print(f"\n--- BẮT ĐẦU XỬ LÝ DỪNG PHÂN SỐ: AFML FRACTIONAL DIFFERENCER (Parallel Optimized) ---")
         start_time = time.time()
 
-        # Đảm bảo sắp xếp thời gian cho từng group
+        # 1. Dự toán Group Boundaries (offsets) một lần duy nhất
         df = df.sort_values(['code', 'sub_code', 'horizon', 'ts_index']).reset_index(drop=True)
-        grouped = df.groupby(['code', 'sub_code', 'horizon'], sort=False)
-        train_df = df[df['is_test'] == 0] if 'is_test' in df.columns else df
-     
-        train_grouped = train_df.groupby(['code', 'sub_code', 'horizon'], sort=False)
-        top_group_keys = train_grouped.size().idxmax()
-    
-        train_group_data = train_df[(train_df['code'] == top_group_keys[0]) & 
-                                    (train_df['sub_code'] == top_group_keys[1]) & 
-                                    (train_df['horizon'] == top_group_keys[2])]
-        for idx, col in enumerate(features_list, 1):
-            start_col = time.time()
+        group_sizes = df.groupby(['code', 'sub_code', 'horizon'], sort=False).size().values
+        group_offsets = np.insert(np.cumsum(group_sizes), 0, 0)
+        
+        # 2. Tìm Group đại diện lớn nhất
+        top_group_idx_in_sizes = np.argmax(group_sizes)
+        start_top, end_top = group_offsets[top_group_idx_in_sizes], group_offsets[top_group_idx_in_sizes+1]
+        test_idx = np.arange(start_top, end_top)
+        
+        is_test_col = df['is_test'].values if 'is_test' in df.columns else None
+        
+        # 3. Chạy Song song cho các Features
+        print(f"Xử lý song song {len(features_list)} features sử dụng all CPU cores...")
+        
+        results = Parallel(n_jobs=-1)(
+            delayed(self._process_single_col)(
+                col, 
+                df[col].values, 
+                group_offsets, 
+                is_test_col, 
+                test_idx
+            ) for col in features_list
+        )
+        
+        # 4. Gộp kết quả
+        for col, res_col, opt_d, duration in results:
+            df[f"{col}_sta"] = res_col
+            print(f"  - {col:15} | d_opt: {opt_d:.1f} | Done ({duration:.2f}s)")
             
-            # 4. Sử dụng trực tiếp dữ liệu đã chuẩn bị
-            test_series = train_group_data[col]
-            opt_d = self.find_optimal_d(test_series)
-            
-            print(f"[{idx}/{len(features_list)}] {col:15} | d_opt: {opt_d:.1f} ", end='', flush=True)
-            
-            if opt_d < 1.0: # Chỉ xử lý nếu d < 1.0 (vì d=1.0 là integer diff, d=0.0 là giữ nguyên)
-                w_for_conv = self.get_weights_ffw(opt_d)
-                window_len = len(w_for_conv)
-
-                # Áp dụng song song/vectorized trên từng group
-                def apply_frac_diff(g):
-                    if len(g) < window_len:
-                        return np.full(len(g), np.nan, dtype=np.float32)
-                    
-                    # NỘI SUY CỤC BỘ DÀNH RIÊNG CHO CONVOLVE
-                    # Tránh hiệu ứng lây lan (propagation) của NaN ra toàn bộ window length.
-                    # Mảng này chỉ dùng để tính toán nội bộ.
-                    g_filled = pd.Series(g.values).ffill().bfill().fillna(0).values
-                    
-                    # Tính toán sai phân trên mảng đã lấp NaN
-                    res = np.convolve(g_filled, w_for_conv, mode='full')[:len(g)]
-                    
-                    # ĐẶT NAN cho phần warm-up (không đủ dữ liệu quá khứ)
-                    res[:window_len-1] = np.nan
-                    
-                    # Phục hồi giá trị NaN nguyên thủy 
-                    # (Nếu data gốc là NaN thì điểm ảnh sai phân cũng nên là NaN)
-                    res[np.isnan(g.values)] = np.nan
-                    
-                    return res.astype(np.float32)
-
-                df[f"{col}_sta"] = grouped[col].transform(apply_frac_diff)
-            
-            elif opt_d == 1.0:
-                # Nếu d=1.0, dùng diff standard của pandas cho nhanh
-                df[f"{col}_sta"] = grouped[col].transform(lambda g: g.diff().astype(np.float32))
-
-            print(f"| Done ({time.time() - start_col:.2f}s)")
-            if idx % 10 == 0: gc.collect()
         print(f"Datashape: {df.shape}")
         print(f"Tổng NaN sau xử lý Dừng Phân Số (Fractional Differencing): {df.isna().sum().sum()}")
         print(f"HOÀN THÀNH XỬ LÝ: {time.time() - start_time:.2f}s")
+        gc.collect()
         return df
 
 

@@ -3,6 +3,8 @@ import numpy as np
 import time
 import sys
 import os
+import gc
+from joblib import Parallel, delayed
 
 # Paths
 # BASE_DIR should be f:\Projects\hege_fund_kaggle
@@ -21,40 +23,48 @@ class AlphaGenerator:
         self.lag_features = lag_features
         self.lags = lags
 
+    def _process_single_lag(self, df_values, col, lag, group_indices):
+        """Helper để tính shift song song (Internal logic giả lập groupby shift)"""
+        res = np.full_like(df_values, np.nan, dtype=np.float32)
+        # Vì data đã sort: code, sub_code, horizon, ts_index 
+        # Chúng ta có thể dùng shift vector và xóa ranh giới group (nhanh hơn groupby.shift)
+        res[lag:] = df_values[:-lag]
+        
+        # Xóa dữ liệu rò rỉ tại ranh giới mỗi group
+        for start in group_indices:
+            if start + lag <= len(res):
+                res[start : start + lag] = np.nan
+        return f"{col}_lag_{lag}", res
+
     def inject_lagged_momentum(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Đại loại nó tạo thêm cột ['feature_al', 'feature_am', 'feature_cg', 'feature_by'] nhưng shift lên [1, 3, 5, 10, 25]
-        """
-        print("\n--- BẮT ĐẦU: CẤY GHÉP TRÍ NHỚ TRỤC DỌC (LAGGED MOMENTUM) ---")
+        print("\n--- BẮT ĐẦU: CẤY GHÉP TRÍ NHỚ TRỤC DỌC (LAGGED MOMENTUM - Parallel) ---")
         start_time = time.time()
         
-        # BƯỚC 1: Khóa chặt Tọa độ Không-Thời gian (Absolute Sorting)
-        # Bắt buộc phải sắp xếp để .shift() không bị trượt nhầm mã
         df = df.sort_values(['code', 'sub_code', 'horizon', 'ts_index']).reset_index(drop=True)
         
-        # BƯỚC 2: Khởi tạo ranh giới vách ngăn (Groupby Boundaries)
-        grouped = df.groupby(['code', 'sub_code', 'horizon'])
-        
-        # BƯỚC 3: Kích hoạt Phép toán Nhân quả (Causal Shifting)
-        new_cols = {}
+        # Tính toán ranh giới group một lần duy nhất
+        group_sizes = df.groupby(['code', 'sub_code', 'horizon'], sort=False).size().values
+        group_indices = np.insert(np.cumsum(group_sizes)[:-1], 0, 0)
+
+        tasks = []
         for col in self.lag_features:
-            if col not in df.columns:
-                print(f" Cảnh báo: {col} không tồn tại trong tập dữ liệu.")
-                continue
+            if col in df.columns:
+                for lag in self.lags:
+                    tasks.append((df[col].values, col, lag))
+
+        if tasks:
+            print(f"   - Đang tính {len(tasks)} đặc trưng trễ song song...")
+            results = Parallel(n_jobs=-1)(
+                delayed(self._process_single_lag)(vals, col, lag, group_indices) 
+                for vals, col, lag in tasks
+            )
             
-            for lag in self.lags:
-                new_col_name = f"{col}_lag_{lag}"
-                # Lấy giá trị của 'lag' bước trước đó đắp vào hiện tại
-                new_cols[new_col_name] = grouped[col].shift(lag).astype(np.float32)
-                
-        # Nối các cột mới vào dataframe gốc (dùng pd.concat để tối ưu RAM thay vì gán từng cột)
-        if new_cols:
+            new_cols = {name: res for name, res in results}
             df = pd.concat([df, pd.DataFrame(new_cols, index=df.index)], axis=1)
-                
-        print(f" Đã tạo thành công {len(new_cols)} đặc trưng trễ. Tối ưu hóa float32.")
-        print(f" Tổng NaN tại cuối lớp Trí Nhớ Trục Dọc: {df.isna().sum().sum()}")
+            del new_cols, results
+            
         print(f" Thời gian thực thi: {time.time() - start_time:.2f}s")
-        
+        gc.collect()
         return df
     
     def inject_cross_sectional_zscore(self, df: pd.DataFrame, target_features=['feature_k_sta', 'feature_at_sta', 'feature_by_sta'], rawdata=RAW_DATA) -> pd.DataFrame:
@@ -76,63 +86,52 @@ class AlphaGenerator:
         3. Bảo chứng Không Rò rỉ (Zero-Leakage Guarantee): Phép biến đổi mang tính Nhân quả (Causal) 100%, 
         chỉ sử dụng thông tin lát cắt ngang tại thời điểm t, tuyệt đối không nhìn trộm tương lai.
         """
-        print("\n--- BẮT ĐẦU: CẤY GHÉP SỨC MẠNH TRỤC NGANG (SECTOR-NEUTRAL Z-SCORE) ---")
+    def inject_cross_sectional_zscore(self, df: pd.DataFrame, target_features=['feature_k_sta', 'feature_at_sta', 'feature_by_sta'], rawdata=RAW_DATA) -> pd.DataFrame:
+        print("\n--- BẮT ĐẦU: CẤY GHÉP SỨC MẠNH TRỤC NGANG (CROSS-SECTIONAL Z-SCORE - Parallel) ---")
         start_time = time.time()
         
-        # BƯỚC 1: Khởi tạo vách ngăn Không-Thời gian (Spatio-Temporal Boundaries)
-        # Nhóm theo CÙNG MỘT thời điểm (ts_index) và CÙNG MỘT nhóm ngành (sub_category)
-        grouped = df.groupby(['ts_index', 'sub_category'])
+        def calculate_zscore(col_name):
+            # Tính toán mean/std bằng agg rồi merge (nhanh hơn transform cho dữ liệu lớn)
+            stats = df.groupby(['ts_index', 'sub_category'])[col_name].agg(['mean', 'std'])
+            
+            # Map lại dữ liệu vào dataframe gốc qua index
+            # Dùng join/map để gán giá trị nhanh
+            merged_stats = df[['ts_index', 'sub_category']].join(stats, on=['ts_index', 'sub_category'])
+            
+            g_mean = merged_stats['mean'].values
+            g_std = merged_stats['std'].values
+            
+            # Xử lý std an toàn
+            safe_std = np.where(np.isnan(g_std) | (g_std == 0), 1.0, g_std)
+            z_score = (df[col_name].values - g_mean) / safe_std
+            
+            return f"{col_name}_sector_zscore", z_score.astype(np.float32)
+
+        print(f"   - Đang tính Z-Score song song cho {len(target_features)} features...")
+        z_results = Parallel(n_jobs=-1)(delayed(calculate_zscore)(c) for c in target_features if c in df.columns)
         
-        new_cols = {}
-        for col in target_features:
-            if col not in df.columns:
-                continue
-                
-            new_col_name = f"{col}_sector_zscore"
-            
-            # BƯỚC 2: Tính toán Thống kê Cục bộ (Local Statistics)
-            # Lưu ý quan trọng: Pandas .transform('mean') và .transform('std') TỰ ĐỘNG BỎ QUA NaN.
-            group_mean = grouped[col].transform('mean')
-            group_std = grouped[col].transform('std')
-            
-            # BƯỚC 3: Chuẩn hóa Z-Score và Xử lý Lỗi Chia cho 0 (Zero-Division Safe)
-            # Nhóm 1 phần tử thì std = NaN -> Gán thành 1.0 để tránh phép chia cho NaN
-            safe_std = group_std.fillna(1.0)
-            # Nếu tất cả giá trị bằng nhau thì std = 0 -> Gán thành 1.0
-            safe_std = np.where(safe_std == 0, 1.0, safe_std)
-            
-            # Tính z-score: Nếu df[col] vốn là NaN thì z-score sẽ giữ nguyên là NaN (Bảo toàn Native NaN)
-            z_score = (df[col] - group_mean) / safe_std
-            
-            new_cols[new_col_name] = z_score.astype(np.float32)
-            
-        if new_cols:
-            df = pd.concat([df, pd.DataFrame(new_cols, index=df.index)], axis=1)
-            
+        if z_results:
+            new_z_cols = {name: res for name, res in z_results}
+            df = pd.concat([df, pd.DataFrame(new_z_cols, index=df.index)], axis=1)
+            del new_z_cols, z_results
+
+        # Merge Raw Data (Optimized)
         if rawdata and os.path.exists(rawdata):
-            print(f" Nối với raw data (phục hồi các cột bị rớt) từ: {rawdata}")
-            raw_df = pd.read_parquet(rawdata)
+            print(f"   - Nối với raw data từ: {rawdata}")
+            raw_columns = pd.read_parquet(rawdata, columns=None).columns # Get column list first
+            cols_to_add = [c for c in raw_columns if c not in df.columns]
             
-            cols_to_add = [c for c in raw_df.columns if c not in df.columns]
-            
-            if 'id' in df.columns and 'id' in raw_df.columns:
-                # Dùng left join để giữ nguyên dữ liệu gốc của pipeline df hiện tại (gồm cả modified features)
-                # và chỉ lấy thêm các cột missing từ raw_df tương ứng.
-                df = pd.merge(df, raw_df[['id'] + cols_to_add], on='id', how='left')
-            else:
-                raw_df = raw_df.sort_values(['code', 'sub_code', 'horizon', 'ts_index']).reset_index(drop=True)
-                # Fallback ghép nối trực tiếp nếu không thể nối qua id.
-                df = pd.concat([df, raw_df[cols_to_add]], axis=1)
+            if cols_to_add:
+                raw_df = pd.read_parquet(rawdata, columns=['id'] + cols_to_add)
+                df = pd.merge(df, raw_df, on='id', how='left')
+                del raw_df
                 
-            # Đảm bảo trục thời gian không bị lệch sau khi merge
             if all(col in df.columns for col in ['code', 'sub_code', 'horizon', 'ts_index']):
                 df.sort_values(['code', 'sub_code', 'horizon', 'ts_index'], inplace=True)
                 df.reset_index(drop=True, inplace=True)
             
-        print(f" Đã tạo thành công {len(new_cols)} đặc trưng Z-Score chéo nhóm ngành.")
-        print(f" Tổng NaN tại cuối lớp Z-Score & Merge Raw Data: {df.isna().sum().sum()}")
-        print(f" Data Shape: {df.shape}")
         print(f" Thời gian thực thi: {time.time() - start_time:.2f}s")
+        gc.collect()
         return df
 
 def main(file_path):

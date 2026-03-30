@@ -51,7 +51,7 @@ class InferencePreprocess:
         gc.collect()
         
         # 5. Identify Features
-        meta_cols = ['id', 'y_target', 'weight', 'ts_index', 'is_test']
+        meta_cols = ['id', 'y_target', 'weight', 'ts_index', 'is_test', 'code', 'sub_code', 'sub_category']
         features = [c for c in df.columns if c not in meta_cols]
         
         # 5. NaN Imputation (Restoring Memory)
