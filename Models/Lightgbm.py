@@ -11,7 +11,8 @@ import pandas as pd
 import numpy as np
 import lightgbm as lgb
 from metric import weighted_rmse_score
-from sklearn.preprocessing import LabelEncoder
+
+
 import warnings
 import optuna
 from Modules.PurgedKFold import LeakFreePurgedKFold
@@ -144,14 +145,6 @@ def run_lgbm(file_path, tuning=False, training=True):
     # Prepare t1 (Label End Time) column
     df['t1_end'] = df['ts_index'] + df['horizon']
     
-    # Handling Categorical Columns with Label Encoding
-    cat_cols = ['code', 'sub_code', 'sub_category', 'horizon']
-    for col in cat_cols:
-        if col in df.columns:
-            print(f"Label Encoding: {col}")
-            le = LabelEncoder()
-            df[col] = le.fit_transform(df[col].astype(str))
-
     # Sort firmly by time to ensure absolute order
     df = df.sort_values(['ts_index', 'code', 'sub_code']).reset_index(drop=True)
     
@@ -167,8 +160,8 @@ def run_lgbm(file_path, tuning=False, training=True):
     print(f"Final Train shape: {train_df.shape}")
 
     # Definition of features
-    # Mở rộng danh sách loại trừ bằng các tính năng Không Dừng (Failed FracDiff)
-    blacklist = ['code', 'sub_code', 'sub_category']
+    # Categorical cols (code, sub_code, sub_category, horizon) are kept as features
+    # and handled natively by LightGBM via categorical_feature param in lgb.Dataset
     exclude = ['id', 'y_target', 'weight', 'ts_index', 't1_end']
     features = [c for c in df.columns if c not in exclude]
     

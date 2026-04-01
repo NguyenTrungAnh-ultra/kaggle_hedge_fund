@@ -85,21 +85,9 @@ class NaN_Handler:
         results = Parallel(n_jobs=-1)(delayed(is_constant)(df[c]) for c in cols_to_check)
         constant_cols = [cols_to_check[i] for i, const in enumerate(results) if const]
         
-        # Blacklist cũ
-        blacklist = [
-            "is_nan_feature_w", "is_nan_feature_v", "is_nan_feature_p", "is_nan_feature_o",
-            "is_nan_feature_l", "is_nan_feature_m", "is_nan_feature_u", "is_nan_feature_t",
-            "is_nan_feature_s", "is_nan_feature_q", "is_nan_feature_ab", "is_nan_feature_x",
-            "is_nan_feature_au", "is_nan_feature_ak", "is_nan_feature_ah", "is_nan_feature_y",
-            "is_nan_feature_aa", "is_nan_feature_z", "is_nan_feature_ac", "is_nan_feature_av",
-            "is_nan_feature_bl", "is_nan_feature_bj", "is_nan_feature_bi", "is_nan_feature_az",
-            "is_nan_feature_ax", "is_nan_feature_cc", "is_nan_feature_bz", "is_nan_feature_ca"
-        ]
-        
-        final_drop = list(set(constant_cols + [b for b in blacklist if b in df.columns]))
-        if final_drop:
-            print(f"     -> Đã loại bỏ {len(final_drop)} cột hằng số hoặc vô ích.")
-            df.drop(columns=final_drop, inplace=True)
+        if constant_cols:
+            print(f"     -> Đã loại bỏ {len(constant_cols)} cột hằng số (phát hiện động).")
+            df.drop(columns=constant_cols, inplace=True)
             
         print(f"HOÀN THÀNH XỬ LÝ NAN: {time.time() - start_time:.2f}s")
         print(f"Datashape: {df.shape}")

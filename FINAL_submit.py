@@ -2,7 +2,6 @@ import pandas as pd
 import numpy as np
 import lightgbm as lgb
 from Models.metric import weighted_rmse_score
-from sklearn.preprocessing import LabelEncoder
 import os
 import time
 import warnings
@@ -42,15 +41,6 @@ def main(retrain=False):
     # Tính t1_end để dùng cho Purging nếu retrain
     df['t1_end'] = df['ts_index'] + df['horizon']
 
-    # Label Encoding cho các cột Categorical trước khi tách Train/Test
-    # (Do retrain=True hoặc do tập parquet bao quát toàn cục nên fit_transform sẽ đồng nhất mapping)
-    cat_cols = ['code', 'sub_code', 'sub_category']
-    for col in cat_cols:
-        if col in df.columns:
-            print(f"   Label Encoding: {col}")
-            le = LabelEncoder()
-            df[col] = le.fit_transform(df[col].astype(str))
-
     # BÂY GIỜ mới tiến hành tách dữ liệu
     train_only = df[df['is_test'] == 0].copy()
     
@@ -60,7 +50,6 @@ def main(retrain=False):
     del df # Giải phóng bộ nhớ RAM
             
     print("\n4. Feature Selection & Model Deployment...")
-    blacklist = ['code', 'sub_code', 'sub_category']
     exclude = ['id', 'y_target', 'weight', 'ts_index', 'is_test', 't1_end']
     features = [c for c in train_only.columns if c not in exclude]
     

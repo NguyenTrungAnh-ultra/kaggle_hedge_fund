@@ -4,7 +4,7 @@ import time
 import sys
 import os
 import gc
-from joblib import Parallel, delayed
+from joblib import Parallel, delayed  # Used by inject_cross_sectional_zscore
 
 # Paths
 # BASE_DIR should be f:\Projects\hege_fund_kaggle
@@ -19,49 +19,49 @@ class AlphaGenerator:
     Module tạo Phái sinh Alpha (Feature Engineering).
     Bảo đảm tuyệt đối nguyên tắc Nhân quả (Causality) và Không Rò rỉ (Zero-Leakage).
     """
-    def __init__(self, lag_features=['feature_al_logret', 'feature_am_logret', 'feature_cg_logret'], lags=[1, 3, 5, 10, 25]):
+    def __init__(self, lag_features=['feature_al_logret', 'feature_am_logret', 'feature_u_logret'], lags=[1, 3, 5, 10, 25]):
         self.lag_features = lag_features
         self.lags = lags
 
-    def _process_single_lag(self, df_values, col, lag, group_indices):
-        """Helper để tính shift song song (Internal logic giả lập groupby shift)"""
-        res = np.full_like(df_values, np.nan, dtype=np.float32)
-        # Vì data đã sort: code, sub_code, horizon, ts_index 
-        # Chúng ta có thể dùng shift vector và xóa ranh giới group (nhanh hơn groupby.shift)
-        res[lag:] = df_values[:-lag]
-        
-        # Xóa dữ liệu rò rỉ tại ranh giới mỗi group
-        for start in group_indices:
-            if start + lag <= len(res):
-                res[start : start + lag] = np.nan
-        return f"{col}_lag_{lag}", res
-
     def inject_lagged_momentum(self, df: pd.DataFrame) -> pd.DataFrame:
-        print("\n--- BẮT ĐẦU: CẤY GHÉP TRÍ NHỚ TRỤC DỌC (LAGGED MOMENTUM - Parallel) ---")
+        print("\n--- BẮT ĐẦU: CẤY GHÉP TRÍ NHớ TRỤC DỌC (LAGGED MOMENTUM) ---")
         start_time = time.time()
         
         df = df.sort_values(['sub_category', 'code', 'sub_code', 'horizon', 'ts_index']).reset_index(drop=True)
         
-        # Tính toán ranh giới group một lần duy nhất
-        group_sizes = df.groupby(['sub_category', 'code', 'sub_code', 'horizon'], sort=False).size().values
-        group_indices = np.insert(np.cumsum(group_sizes)[:-1], 0, 0)
-
-        tasks = []
-        for col in self.lag_features:
-            if col in df.columns:
-                for lag in self.lags:
-                    tasks.append((df[col].values, col, lag))
-
-        if tasks:
-            print(f"   - Đang tính {len(tasks)} đặc trưng trễ song song...")
-            results = Parallel(n_jobs=-1)(
-                delayed(self._process_single_lag)(vals, col, lag, group_indices) 
-                for vals, col, lag in tasks
-            )
-            
-            new_cols = {name: res for name, res in results}
-            df = pd.concat([df, pd.DataFrame(new_cols, index=df.index)], axis=1)
-            del new_cols, results
+        # Dùng groupby.shift() chuẩn của pandas: đúng về mặt toán học, không có rủi ro race condition
+        grouped = df.groupby(['sub_category', 'code', 'sub_code', 'horizon'], sort=False)
+        
+        new_cols = {}
+        valid_cols = [col for col in self.lag_features if col in df.columns]
+        missing = set(self.lag_features) - set(valid_cols)
+        if missing:
+            print(f"   ⚠ CẢNH BÁO: Không tìm thấy các cột lag: {missing}")
+        
+        total_tasks = len(valid_cols) * len(self.lags)
+        done = 0
+        for col in valid_cols:
+            for lag in self.lags:
+                shifted = grouped[col].shift(lag).astype(np.float32)
+                new_cols[f"{col}_lag_{lag}"] = shifted.values
+                done += 1
+                if done % 5 == 0 or done == total_tasks:
+                    print(f"   [{done:2}/{total_tasks}] lag features computed")
+        
+        if new_cols:
+            new_df = pd.DataFrame(new_cols, index=df.index)
+            # NaN Report: phân biệt NaN ranh giới (bình thường) vs NaN bất thường
+            total_nan = new_df.isna().sum().sum()
+            n_groups = grouped.ngroups
+            expected_boundary_nan = sum(lag * n_groups for lag in self.lags) * len(valid_cols)
+            extra_nan = max(0, total_nan - expected_boundary_nan)
+            print(f"   NaN Report (Lagged Momentum):")
+            print(f"     - Tổng NaN trong {len(new_cols)} cột lag: {total_nan:,}")
+            print(f"     - Ước tính NaN ranh giới group: ~{expected_boundary_nan:,} (bình thường)")
+            if extra_nan > 0:
+                print(f"     - ⚠ NaN bất thường ngoài ranh giới: {extra_nan:,}")
+            df = pd.concat([df, new_df], axis=1)
+            del new_cols, new_df
             
         print(f" Thời gian thực thi: {time.time() - start_time:.2f}s")
         gc.collect()

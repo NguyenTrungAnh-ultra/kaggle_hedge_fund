@@ -28,30 +28,61 @@ class LogReturn_Handler:
         # Danh sách các cột mới để tối ưu việc gán
         new_cols_dict = {}
         
+        nan_clipped_cols = []
         for idx, col in enumerate(features_list, 1):
             col_start = time.time()
             
-            # Tính Log(X_t + 1) - Sử dụng float32 để tiết kiệm RAM
-            # Thêm epsilon nhỏ hoặc 1 để tránh log(0)
-            log_curr = np.log1p(df[col].values.astype(np.float32))
+            raw_vals = df[col].values.astype(np.float32)
+            
+            # Guard #3: Kiểm tra và clip giá trị âm trước log1p
+            # log1p(x) = log(x+1): nếu x < -1 → NaN im lặng; nếu x < 0 → kết quả âm (không hợp lệ cho biến "toàn dương")
+            neg_mask = (raw_vals < 0) & ~np.isnan(raw_vals)
+            if neg_mask.any():
+                n_neg = neg_mask.sum()
+                nan_clipped_cols.append((col, int(n_neg)))
+                raw_vals = np.where(neg_mask, 0.0, raw_vals)  # Clip về 0 thay vì để NaN
+            
+            log_curr = np.log1p(raw_vals)
             
             # Tính Log(X_{t-1} + 1) bằng cách shift theo nhóm
             # Phải shift TRƯỚC khi lấy log để đảm bảo logic thời gian chuẩn
             shifted_vals = grouped[col].shift(self.lag).values.astype(np.float32)
+            # Guard: clip shifted cũng có thể âm sau ffill hoặc impute
+            neg_shifted = (shifted_vals < 0) & ~np.isnan(shifted_vals)
+            if neg_shifted.any():
+                shifted_vals = np.where(neg_shifted, 0.0, shifted_vals)
             log_prev = np.log1p(shifted_vals)
             
-            # Log Return
+            # Log Return (NaN tại ranh giới group từ shift là bình thường)
             new_cols_dict[f"{col}_logret"] = (log_curr - log_prev)
             
             if idx % 20 == 0 or idx == len(features_list):
                 print(f"   [{idx:2}/{len(features_list)}] Created {col}_logret ({time.time() - col_start:.2f}s)")
         
+        if nan_clipped_cols:
+            print(f"   ⚠ CẢNH BÁO: {len(nan_clipped_cols)} cột có giá trị âm bị clip về 0 trước log1p:")
+            for cname, cnt in nan_clipped_cols:
+                print(f"     - {cname}: {cnt} giá trị âm")
+        
         # Gán tất cả các cột mới một lượt để tránh fragmented dataframe và tiết kiệm RAM
         print(f"   Đang gán {len(new_cols_dict)} cột mới vào DataFrame...")
-        df = pd.concat([df, pd.DataFrame(new_cols_dict, index=df.index)], axis=1)
+        new_df = pd.DataFrame(new_cols_dict, index=df.index)
+        df = pd.concat([df, new_df], axis=1)
+        
+        # Report #4: NaN propagation summary sau log return
+        logret_cols = list(new_cols_dict.keys())
+        nan_counts = new_df.isna().sum()
+        total_nan = nan_counts.sum()
+        n_boundary_nan = len(features_list) * df.groupby(['sub_category', 'code', 'sub_code', 'horizon'], sort=False).ngroups * self.lag
+        print(f"   NaN Report (Log Return):")
+        print(f"     - Tổng NaN trong {len(logret_cols)} cột _logret: {total_nan:,}")
+        print(f"     - Ước tính NaN ranh giới group (lag={self.lag}): ~{n_boundary_nan:,} (bình thường)")
+        extra_nan = max(0, total_nan - n_boundary_nan)
+        if extra_nan > 0:
+            print(f"     - ⚠ NaN bất thường ngoài ranh giới: {extra_nan:,} → kiểm tra dữ liệu đầu vào")
         
         # Dọn dẹp RAM
-        del new_cols_dict
+        del new_cols_dict, new_df
         gc.collect()
         
         print(f"HOÀN THÀNH XỬ LÝ LOG RETURN: {time.time() - start_time:.2f}s")
