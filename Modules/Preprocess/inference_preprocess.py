@@ -9,12 +9,12 @@ import numpy as np
 # Đảm bảo có thể import các module anh em khi chạy script trực tiếp
 try:
     from Modules.Preprocess.handle_na import NaN_Handler
-    from Modules.Preprocess.make_stationary import Fractional_Differencer
     from Modules.Preprocess.feature_builder import AlphaGenerator
+    from Modules.Preprocess.LogReturn import LogReturn_Handler
 except ImportError:
     from handle_na import NaN_Handler
-    from make_stationary import Fractional_Differencer
     from feature_builder import AlphaGenerator
+    from LogReturn import LogReturn_Handler
 
 class InferencePreprocess:
     """
@@ -43,6 +43,10 @@ class InferencePreprocess:
         del train, test
         gc.collect()
         
+        # Sắp xếp sơ bộ theo phân cấp mới (Sector -> Ticker -> SubTicker)
+        df.sort_values(['sub_category', 'code', 'sub_code', 'horizon', 'ts_index'], inplace=True)
+        df.reset_index(drop=True, inplace=True)
+        
         # 4. Memory Optimization (Crucial for 6M+ rows)
         # Chuyển đổi float64 sang float32 để tiết kiệm 1/2 bộ nhớ
         float64_cols = df.select_dtypes(include=['float64']).columns
@@ -51,40 +55,32 @@ class InferencePreprocess:
         gc.collect()
         
         # 5. Identify Features
-        meta_cols = ['id', 'y_target', 'weight', 'ts_index', 'is_test', 'code', 'sub_code', 'sub_category']
+        meta_cols = ['id', 'y_target', 'weight', 'ts_index', 'is_test', 'code', 'sub_code', 'sub_category', 'horizon']
         features = [c for c in df.columns if c not in meta_cols]
         
-        # 5. NaN Imputation (Restoring Memory)
+        # 6. NaN Imputation (Restoring Memory)
         print("2. Khởi tạo NaN Handler để phục hồi Memory (Layer 1-4)...")
         nan_handler = NaN_Handler()
         df = nan_handler.process(df, features)
-        
-        # 6. Stationarity (Fractional Differencing)
-        if not os.path.exists(report_path):
-            print(f"CẢNH BÁO: Không thấy file báo cáo dừng {report_path}. Bỏ qua FracDiff.")
-        else:
-            print(f"3. Bắt đầu xử lý Stationarity dựa trên báo cáo: {report_path}")
-            report = pd.read_csv(report_path)
-            to_fix = report[report['Final_Verdict'].str.contains("Non-Stationary|Nghi ngờ", na=False)]
-            cols_to_fix = to_fix['feature'].unique().tolist()
-            # Chỉ xử lý các cột thực sự có trong dữ liệu
-            cols_to_fix = [c for c in cols_to_fix if c in df.columns]
-            
-            print(f"   Phát hiện {len(cols_to_fix)} tính năng cần xử lý FracDiff.")
-            
-            # Xử lý Stationarity sử dụng class Fractional_Differencer đã được tối ưu
-            diff_handler = Fractional_Differencer()
-            df = diff_handler.process(df, cols_to_fix)
-        # 7. AlphaGenerator
-        print("4. Bắt đầu tạo Alpha Features (Lags & Z-Score)...")
-        alpha_gen = AlphaGenerator()
+        gc.collect()
+
+        # 6.5. Log Return for positive features (Must run BEFORE AlphaGenerator)
+        pos_features = [f for f in features if df[f].min() >= 0 and df[f].max() > 0]
+        print(f"2.5. Phát hiện {len(pos_features)} tính năng toàn dương. Xử lý Log Return...")
+        logret_handler = LogReturn_Handler(lag=1)
+        df = logret_handler.process(df, pos_features)
+        gc.collect()
+
+        # 7. AlphaGenerator (Lags & Momentum)
+        print("4. Bắt đầu tạo Alpha Features (Phái sinh từ Log Return)...")
+        # Sử dụng các bản _logret thay vì _sta
+        alpha_gen = AlphaGenerator(lag_features=['feature_al_logret', 'feature_am_logret', 'feature_u_logret'])
         df = alpha_gen.inject_lagged_momentum(df)
-        df = alpha_gen.inject_cross_sectional_zscore(df, rawdata=None)
         gc.collect()
         
-        # 8. Final Sorting for Time-Series logic
+        # 8. Final Sorting for Time-Series logic (Synced with new Hierarchy)
         print("4. Sắp xếp dữ liệu và xuất file...")
-        df.sort_values(['code', 'sub_code', 'horizon', 'ts_index'], inplace=True)
+        df.sort_values(['sub_category', 'code', 'sub_code', 'horizon', 'ts_index'], inplace=True)
         df.reset_index(drop=True, inplace=True)
         gc.collect()
         

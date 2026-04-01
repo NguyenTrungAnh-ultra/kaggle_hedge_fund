@@ -24,11 +24,11 @@ DATA_DIR = os.path.join(PROJECT_ROOT, 'ts-forecasting')
 if not os.path.exists(LOG_DIR):
     os.makedirs(LOG_DIR)
 
-def lgb_weighted_rmse(preds, dataset):
+def lgb_comp_score(preds, dataset):
     y_true = dataset.get_label()
     w = dataset.get_weight()
     score = weighted_rmse_score(y_true, preds, w)
-    return 'weighted_rmse', score, True
+    return 'comp_score', score, True
 
 
 def objective(trial, train_df, features):
@@ -73,10 +73,8 @@ def objective(trial, train_df, features):
         'bagging_freq': trial.suggest_int('bagging_freq', 1, 5),
         
         'extra_trees': trial.suggest_categorical('extra_trees', [True, False]), 
-        'device': 'cpu' 
+        'device': 'cpu'
     }
-    
-    # ... (Phần Hold-out split bên dưới giữ nguyên) ...
 
     # Use a simple Hold-out (last 20% of the sample for validation) to be extremely fast
     # train_df is already sorted by time (ts_index)
@@ -101,9 +99,13 @@ def objective(trial, train_df, features):
     w_va = train_df[va_mask]['weight'].values
 
     print(f"    [Trial {trial.number}] Training with {len(X_tr)} samples, Val with {len(X_va)}...")
+    
+    # Calculate categorical indices once
+    cat_cols = ['code', 'sub_code', 'sub_category', 'horizon']
+    cat_indices = [features.index(c) for c in cat_cols if c in features]
 
-    dtrain = lgb.Dataset(X_tr, label=y_tr, weight=w_tr)
-    dval = lgb.Dataset(X_va, label=y_va, weight=w_va, reference=dtrain)
+    dtrain = lgb.Dataset(X_tr, label=y_tr, weight=w_tr, feature_name=features, categorical_feature=cat_indices)
+    dval = lgb.Dataset(X_va, label=y_va, weight=w_va, reference=dtrain, feature_name=features, categorical_feature=cat_indices)
 
     trial_params = params.copy()
     num_boost_round = trial_params.pop('n_estimators', 100)
@@ -115,14 +117,14 @@ def objective(trial, train_df, features):
         dtrain,
         valid_sets=[dval],
         valid_names=['valid'],
-        feval=lgb_weighted_rmse,
+        feval=lgb_comp_score,
         num_boost_round=num_boost_round,
         callbacks=[lgb.early_stopping(stopping_rounds=30, verbose=False)]
     )
 
     v_preds = model.predict(X_va)
     w_score = weighted_rmse_score(y_va, v_preds, w_va)
-    print(f"    [Trial {trial.number}] Weighted RMSE: {w_score:.6f}")
+    print(f"    [Trial {trial.number}] Competition Score (R): {w_score:.6f}")
     
     # Giải phóng bộ nhớ RAM nội bộ Trial
     del X_tr, y_tr, w_tr, X_va, y_va, w_va, dtrain, dval
@@ -143,7 +145,7 @@ def run_lgbm(file_path, tuning=False, training=True):
     df['t1_end'] = df['ts_index'] + df['horizon']
     
     # Handling Categorical Columns with Label Encoding
-    cat_cols = ['code', 'sub_code', 'sub_category']
+    cat_cols = ['code', 'sub_code', 'sub_category', 'horizon']
     for col in cat_cols:
         if col in df.columns:
             print(f"Label Encoding: {col}")
@@ -290,8 +292,12 @@ def run_lgbm(file_path, tuning=False, training=True):
             
             print(f"Inner Train samples: {len(X_tr)} | Inner Val samples: {len(X_va)}")
             
-            dtrain = lgb.Dataset(X_tr, label=y_tr, weight=w_tr)
-            dval = lgb.Dataset(X_va, label=y_va, weight=w_va, reference=dtrain)
+            # Calculate categorical indices
+            cat_cols = ['code', 'sub_code', 'sub_category', 'horizon']
+            cat_indices = [features.index(c) for c in cat_cols if c in features]
+
+            dtrain = lgb.Dataset(X_tr, label=y_tr, weight=w_tr, feature_name=features, categorical_feature=cat_indices)
+            dval = lgb.Dataset(X_va, label=y_va, weight=w_va, reference=dtrain, feature_name=features, categorical_feature=cat_indices)
 
             params = best_params.copy()
             num_boost_round = params.pop('n_estimators', 1000)
@@ -303,7 +309,7 @@ def run_lgbm(file_path, tuning=False, training=True):
                 dtrain,
                 valid_sets=[dval, dtrain],
                 valid_names=['valid', 'train'],
-                feval=lgb_weighted_rmse,
+                feval=lgb_comp_score,
                 num_boost_round=num_boost_round,
                 callbacks=[
                     lgb.early_stopping(stopping_rounds=100, verbose=False),
@@ -316,9 +322,9 @@ def run_lgbm(file_path, tuning=False, training=True):
             print(f"Saved model to {model_filename}")
             
             v_preds = model.predict(X_va)
-            v_wrmse = weighted_rmse_score(y_va, v_preds, w_va)
-            print(f"Fold {fold} Weighted RMSE: {v_wrmse:.5f}")
-            fold_scores.append(v_wrmse)
+            v_score = weighted_rmse_score(y_va, v_preds, w_va)
+            print(f"Fold {fold} Competition Score (R): {v_score:.5f}")
+            fold_scores.append(v_score)
             
             models.append(model)
             
@@ -326,7 +332,7 @@ def run_lgbm(file_path, tuning=False, training=True):
             del X_tr, y_tr, w_tr, X_va, y_va, w_va, dtrain, dval
             fold += 1
 
-        print(f"\n==> AVERAGE CV WEIGHTED RMSE: {np.mean(fold_scores):.6f} (+/- {np.std(fold_scores):.6f})")
+        print(f"\n==> AVERAGE CV COMPETITION SCORE: {np.mean(fold_scores):.6f} (+/- {np.std(fold_scores):.6f})")
     else:
         print("\n4. Skipping training, loading models from models_param...")
         for fold in range(1, 6):
@@ -339,8 +345,8 @@ def run_lgbm(file_path, tuning=False, training=True):
             model = lgb.Booster(model_file=model_filename)
             models.append(model)
         
-    final_wrmse = np.mean(fold_scores) if fold_scores else 0
-    print(f"\n5. Final Assessment (CV Mean Score): {final_wrmse:.6f}")
+    final_score = np.mean(fold_scores) if fold_scores else 0
+    print(f"\n5. Final Assessment (CV Mean Score): {final_score:.6f}")
     
     # Feature importances
     imp_df = pd.DataFrame({'feature': features})
@@ -356,7 +362,7 @@ def run_lgbm(file_path, tuning=False, training=True):
     with open(report_file, 'w') as f:
         f.write("=== FINAL CV EVALUATION ===\n")
         f.write("Method: Leak-Free Purged K-Fold (Full Training Set)\n")
-        f.write(f"Average CV Weighted RMSE: {final_wrmse:.6f}\n\n")
+        f.write(f"Average CV Competition Score (R): {final_score:.6f}\n\n")
         f.write("Note: Models have been saved to 'models_param' directory.\n\n")
         f.write("Top 20 Features:\n")
         f.write(imp_df.to_string(index=False))

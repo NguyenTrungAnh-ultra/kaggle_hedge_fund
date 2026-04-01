@@ -29,6 +29,12 @@ dtypes: float64(86), int32(3), int64(1), object(4)
 memory usage: 3.7+ GB
 —-------------------------
 
+ Phân bổ các Feature (86 biến):
+Chỉ có giá trị Dương (hoặc 0): 69 feature.
+Chỉ có giá trị Âm (hoặc 0): 9 feature.
+Có cả giá trị Âm và Dương: 8 feature.
+---------------------------
+
 
 --- Categorical Columns ---
 code: 23 unique values

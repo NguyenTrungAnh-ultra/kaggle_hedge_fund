@@ -10,7 +10,7 @@ from joblib import Parallel, delayed
 # BASE_DIR should be f:\Projects\hege_fund_kaggle
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
 DATA_DIR = os.path.join(BASE_DIR, 'ts-forecasting')
-INPUT_FILE = os.path.join(DATA_DIR, 'train_stationary.parquet')
+INPUT_FILE = os.path.join(DATA_DIR, 'train_logreturn.parquet')
 RAW_DATA = os.path.join(DATA_DIR, 'train.parquet')
 OUTPUT_FILE = os.path.join(DATA_DIR, 'train_feature_builded.parquet')
 
@@ -19,7 +19,7 @@ class AlphaGenerator:
     Module tạo Phái sinh Alpha (Feature Engineering).
     Bảo đảm tuyệt đối nguyên tắc Nhân quả (Causality) và Không Rò rỉ (Zero-Leakage).
     """
-    def __init__(self, lag_features=['feature_al_sta', 'feature_am_sta', 'feature_cg_sta', 'feature_by_sta'], lags=[1, 3, 5, 10, 25]):
+    def __init__(self, lag_features=['feature_al_logret', 'feature_am_logret', 'feature_cg_logret'], lags=[1, 3, 5, 10, 25]):
         self.lag_features = lag_features
         self.lags = lags
 
@@ -40,10 +40,10 @@ class AlphaGenerator:
         print("\n--- BẮT ĐẦU: CẤY GHÉP TRÍ NHỚ TRỤC DỌC (LAGGED MOMENTUM - Parallel) ---")
         start_time = time.time()
         
-        df = df.sort_values(['code', 'sub_code', 'horizon', 'ts_index']).reset_index(drop=True)
+        df = df.sort_values(['sub_category', 'code', 'sub_code', 'horizon', 'ts_index']).reset_index(drop=True)
         
         # Tính toán ranh giới group một lần duy nhất
-        group_sizes = df.groupby(['code', 'sub_code', 'horizon'], sort=False).size().values
+        group_sizes = df.groupby(['sub_category', 'code', 'sub_code', 'horizon'], sort=False).size().values
         group_indices = np.insert(np.cumsum(group_sizes)[:-1], 0, 0)
 
         tasks = []
@@ -67,7 +67,7 @@ class AlphaGenerator:
         gc.collect()
         return df
     
-    def inject_cross_sectional_zscore(self, df: pd.DataFrame, target_features=['feature_k_sta', 'feature_at_sta', 'feature_by_sta'], rawdata=RAW_DATA) -> pd.DataFrame:
+    def inject_cross_sectional_zscore(self, df: pd.DataFrame, target_features=['feature_k_logret', 'feature_at_logret'], rawdata=None) -> pd.DataFrame:
         """
         Module Cấy ghép Sức mạnh Trục ngang (Sector-Neutral Cross-Sectional Z-Score).
         
@@ -86,7 +86,6 @@ class AlphaGenerator:
         3. Bảo chứng Không Rò rỉ (Zero-Leakage Guarantee): Phép biến đổi mang tính Nhân quả (Causal) 100%, 
         chỉ sử dụng thông tin lát cắt ngang tại thời điểm t, tuyệt đối không nhìn trộm tương lai.
         """
-    def inject_cross_sectional_zscore(self, df: pd.DataFrame, target_features=['feature_k_sta', 'feature_at_sta', 'feature_by_sta'], rawdata=RAW_DATA) -> pd.DataFrame:
         print("\n--- BẮT ĐẦU: CẤY GHÉP SỨC MẠNH TRỤC NGANG (CROSS-SECTIONAL Z-SCORE - Parallel) ---")
         start_time = time.time()
         
@@ -149,7 +148,7 @@ def main(file_path):
     df = alpha_gen.inject_lagged_momentum(df)
     
     # 2. Cấy ghép Sức mạnh Trục ngang (Sector-Neutral Z-Score)
-    df = alpha_gen.inject_cross_sectional_zscore(df)
+    # df = alpha_gen.inject_cross_sectional_zscore(df)
 
     # Kiểm tra NA sau khi build features
     print("\n--- KIỂM TRA GIÁ TRỊ TRỐNG (NA CHECK) ---")
