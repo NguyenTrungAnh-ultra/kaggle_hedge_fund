@@ -92,19 +92,13 @@ class FastTensorDataLoader:
 class ResidualBlock(nn.Module):
     def __init__(self, dim, dropout):
         super().__init__()
-        self.block = nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.SiLU(inplace=True),
-            nn.Dropout(dropout),
-            nn.Linear(dim, dim),
-            nn.LayerNorm(dim),
-            nn.SiLU(inplace=True),
-            nn.Dropout(dropout),
-            nn.Linear(dim, dim),
-        )
+        self.norm = nn.LayerNorm(dim)
+        self.act = nn.SiLU(inplace=True)
+        self.drop = nn.Dropout(dropout)
+        self.linear = nn.Linear(dim, dim)
 
     def forward(self, x):
-        return x + self.block(x)
+        return x + self.linear(self.drop(self.act(self.norm(x))))
 
 
 class HedgeFundMLP(nn.Module):
@@ -208,21 +202,27 @@ def prepare_data(file_path):
     
     targets_wide = df.pivot(index=pivot_idx, columns="horizon", values="y_target")
     weights_wide = df.pivot(index=pivot_idx, columns="horizon", values="weight")
-    t1_end_wide = df.groupby(pivot_idx)["t1_end"].max().rename("t1_end")
     
-    print("   Aggregating features across horizons (Wide Concatenation)...")
-    # To preserve signal, we concatenate features from all horizons
-    features_wide = df.pivot(index=pivot_idx, columns="horizon", values=cont_features)
-    features_wide.columns = [f"{c[0]}_h{c[1]}" for c in features_wide.columns]
+    print("   Extracting unique features per observation...")
+    # Using mean across horizons in case of sparse data (leak-free as same ts)
+    features_wide = df.groupby(pivot_idx)[cont_features].mean()
+    t1_end_wide = df.groupby(pivot_idx)["t1_end"].max()
     
     df_wide = pd.concat([targets_wide.add_prefix("y_h"), 
                          weights_wide.add_prefix("w_h"), 
-                         t1_end_wide], axis=1)
+                         t1_end_wide.rename("t1_end")], axis=1)
     df_wide = df_wide.join(features_wide).reset_index()
     
     y_cols = [f"y_h{h}" for h in HORIZONS]
     w_cols = [f"w_h{h}" for h in HORIZONS]
     feature_cols = [c for c in df_wide.columns if c not in pivot_idx and c not in y_cols and c not in w_cols and c != "t1_end"]
+    
+    print("   Imputing NaNs with historical stock-wise mean (No-Leak)...")
+    df_wide = df_wide.sort_values(['code', 'ts_index'])
+    # Fast vectorized expanding mean imputation per stock
+    for col in feature_cols:
+        df_wide[col] = df_wide.groupby('code')[col].transform(lambda x: x.fillna(x.expanding().mean()))
+    df_wide[feature_cols] = df_wide[feature_cols].fillna(0.0)
     
     df_wide = df_wide[df_wide[y_cols].notna().any(axis=1)].reset_index(drop=True)
     
@@ -259,20 +259,14 @@ def get_fold_data(df, train_idx, val_idx, feature_cols, y_cols, w_cols):
     y_tr = np.clip(y_tr, -CLIP_VAL, CLIP_VAL)
     y_va = np.clip(y_va, -CLIP_VAL, CLIP_VAL)
     
-    TARGET_SCALE = 1000.0 # Reduced from 10000 to avoid FP16/32 overflow during squared loss
+    TARGET_SCALE = 1000.0 
     y_tr = y_tr * TARGET_SCALE
     y_va = y_va * TARGET_SCALE
 
     w_tr = df.iloc[train_idx][w_cols].values.astype(np.float32)
     w_va = df.iloc[val_idx][w_cols].values.astype(np.float32)
 
-    # Simple global median for MTA (grouped is too slow with 760 features)
-    global_medians = np.nanmedian(X_cont_tr, axis=0)
-    global_medians = np.where(np.isnan(global_medians), 0.0, global_medians)
-    
-    X_cont_tr = np.where(np.isnan(X_cont_tr), global_medians, X_cont_tr)
-    X_cont_va = np.where(np.isnan(X_cont_va), global_medians, X_cont_va)
-
+    # Features are now pre-imputed using historical stock-wise mean in prepare_data
     X_cont_tr = np.sign(X_cont_tr) * np.log1p(np.abs(X_cont_tr))
     X_cont_va = np.sign(X_cont_va) * np.log1p(np.abs(X_cont_va))
 
@@ -289,13 +283,9 @@ def get_fold_data(df, train_idx, val_idx, feature_cols, y_cols, w_cols):
     w_tr = w_tr / w_means
     w_va = w_va / w_means
 
-    TARGET_SCALE = 10000.0
-    y_tr = y_tr * TARGET_SCALE
-    y_va = y_va * TARGET_SCALE
-
     return (X_cont_tr, X_cat_tr, y_tr, w_tr,
             X_cont_va, X_cat_va, y_va, w_va,
-            global_medians, tr_mean, tr_std, w_means)
+            None, tr_mean, tr_std, w_means)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -338,15 +328,6 @@ def train_fold(fold_num, X_cont_tr, X_cat_tr, y_tr, w_tr, X_cont_va, X_cat_va, y
     emb_dims = [min(dim, hparams["max_emb_dim"]) for dim in [max(4, card // 2) for card in cat_cardinalities]]
     model = HedgeFundMLP(n_cont_features=n_cont_features, cat_cardinalities=cat_cardinalities, emb_dims=emb_dims, hidden_dim=hparams["hidden_dim"], n_blocks=hparams["n_blocks"], dropout=hparams["dropout"]).to(device)
 
-    TARGET_SCALE = 10000.0
-    with torch.no_grad():
-        # Init bias with task-wise means
-        for t in range(4):
-            valid_mask = ~np.isnan(y_tr[:, t])
-            if valid_mask.any():
-                m = np.average(y_tr[valid_mask, t], weights=w_tr[valid_mask, t])
-                model.head[-1].bias[t].fill_(m)
-
     # Fix delta scaling: hparams['delta'] is now absolute in scaled space
     criterion = MaskedWeightedPseudoHuberLoss(delta=hparams["delta"]) 
     optimizer = torch.optim.AdamW(model.parameters(), lr=hparams["lr"], weight_decay=hparams["weight_decay"])
@@ -387,13 +368,13 @@ def train_fold(fold_num, X_cont_tr, X_cat_tr, y_tr, w_tr, X_cont_va, X_cat_va, y
 def optuna_objective(trial, df_sample, feature_cols, y_cols, w_cols, cat_cardinalities, device):
     hparams = {
         "hidden_dim": trial.suggest_categorical("hidden_dim", [256, 512, 768]),
-        "n_blocks": trial.suggest_int("n_blocks", 2, 4),
+        "n_blocks": trial.suggest_int("n_blocks", 2, 5),
         "dropout": trial.suggest_float("dropout", 0.1, 0.4),
-        "lr": trial.suggest_float("lr", 5e-4, 3e-3, log=True),
+        "lr": trial.suggest_float("lr", 1e-4, 1e-3, log=True),
         "weight_decay": trial.suggest_float("weight_decay", 1e-6, 1e-3, log=True),
-        "delta": trial.suggest_float("delta", 10.0, 50.0),
+        "delta": trial.suggest_float("delta", 20.0, 60.0),
         "batch_size": trial.suggest_categorical("batch_size", [4096, 8192]),
-        "max_emb_dim": 32, "epochs": 25, "patience": 8
+        "max_emb_dim": 32, "epochs": 25, "patience": 8, "grad_clip": 0.5
     }
     split_ts = np.sort(df_sample["ts_index"].unique())[int(len(df_sample["ts_index"].unique()) * 0.8)]
     tr_mask, va_mask = df_sample["ts_index"] < split_ts, df_sample["ts_index"] >= split_ts
@@ -419,13 +400,14 @@ def run_mlp(file_path, tuning=False, training=True):
     elif os.path.exists(param_path):
         with open(param_path, "r") as f: best_params = json.load(f)
     else:
-        best_params = {"hidden_dim": 512, "n_blocks": 3, "dropout": 0.2, "lr": 1e-3, "weight_decay": 1e-4, "delta": 20.0, "batch_size": 4096}
+        best_params = {"hidden_dim": 512, "n_blocks": 4, "dropout": 0.3, "lr": 3e-4, "weight_decay": 1e-4, "delta": 35.0, "batch_size": 8192}
 
     hparams = {
-        "max_emb_dim": 32,  # Default
+        "max_emb_dim": 32, 
         "epochs": 80,
         "patience": 15,
-        "delta": 20.0,      # Default
+        "delta": 35.0,
+        "grad_clip": 0.5,
         **best_params
     }
     if not training: return

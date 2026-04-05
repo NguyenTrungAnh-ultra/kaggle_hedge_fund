@@ -1,0 +1,54 @@
+[MLP-MTA] Using device: cuda
+1. Loading dataset...
+   Original shape: (5337414, 193)
+   Pivoting dataset to Wide (Multi-Task) format...
+   Extracting unique features per observation...
+   Imputing NaNs with historical stock-wise mean (No-Leak)...
+   MTA Wide shape: (1403097, 198)
+   Input Features: 185
+
+FOLD 1
+  Fold 1 | Ep  1 | Loss: 0.7111 | Val Score: 0.018134 | 3.3s
+  Fold 1 | Ep  5 | Loss: 0.6573 | Val Score: 0.070249 | 2.8s
+  Fold 1 | Ep 10 | Loss: 0.6483 | Val Score: 0.081305 | 2.8s
+  Fold 1 | Ep 15 | Loss: 0.6272 | Val Score: 0.056824 | 2.8s
+  Fold 1 | Ep 20 | Loss: 0.6138 | Val Score: 0.016884 | 2.9s
+  Fold 1 | Ep 25 | Loss: 0.6049 | Val Score: 0.017368 | 2.8s
+  Fold 1 | Best Val Score: 0.101839
+
+FOLD 2
+  Fold 2 | Ep  1 | Loss: 0.7647 | Val Score: 0.042837 | 2.9s
+  Fold 2 | Ep  5 | Loss: 0.7094 | Val Score: 0.091704 | 2.7s
+  Fold 2 | Ep 10 | Loss: 0.7005 | Val Score: 0.108626 | 2.7s
+  Fold 2 | Ep 15 | Loss: 0.6766 | Val Score: 0.100787 | 2.7s
+  Fold 2 | Ep 20 | Loss: 0.6607 | Val Score: 0.023019 | 2.7s
+  Fold 2 | Ep 25 | Loss: 0.6490 | Val Score: 0.010779 | 2.7s
+  Fold 2 | Best Val Score: 0.112990
+
+FOLD 3
+  Fold 3 | Ep  1 | Loss: 0.8080 | Val Score: 0.000000 | 2.7s
+  Fold 3 | Ep  5 | Loss: 0.7346 | Val Score: 0.000000 | 2.7s
+  Fold 3 | Ep 10 | Loss: 0.7165 | Val Score: 0.010157 | 2.7s
+  Fold 3 | Ep 15 | Loss: 0.6986 | Val Score: 0.006613 | 2.7s
+  Fold 3 | Ep 20 | Loss: 0.6864 | Val Score: 0.006002 | 2.7s
+  Fold 3 | Ep 25 | Loss: 0.6758 | Val Score: 0.006697 | 2.7s
+  Fold 3 | Best Val Score: 0.014395
+
+FOLD 4
+  Fold 4 | Ep  1 | Loss: 0.8549 | Val Score: 0.000000 | 2.7s
+  Fold 4 | Ep  5 | Loss: 0.7904 | Val Score: 0.024323 | 2.6s
+  Fold 4 | Ep 10 | Loss: 0.7733 | Val Score: 0.083390 | 2.6s
+  Fold 4 | Ep 15 | Loss: 0.7485 | Val Score: 0.019800 | 2.6s
+  Fold 4 | Ep 20 | Loss: 0.7317 | Val Score: 0.030581 | 2.6s
+  Fold 4 | Best Val Score: 0.086274
+
+FOLD 5
+  Fold 5 | Ep  1 | Loss: 0.7821 | Val Score: 0.020940 | 3.0s
+  Fold 5 | Ep  5 | Loss: 0.7232 | Val Score: 0.050570 | 2.7s
+  Fold 5 | Ep 10 | Loss: 0.7113 | Val Score: 0.083461 | 2.7s
+  Fold 5 | Ep 15 | Loss: 0.6840 | Val Score: 0.111362 | 2.7s
+  Fold 5 | Ep 20 | Loss: 0.6711 | Val Score: 0.073260 | 2.6s
+  Fold 5 | Ep 25 | Loss: 0.6656 | Val Score: 0.030803 | 2.7s
+  Fold 5 | Best Val Score: 0.112997
+
+Final MTA CV Score: 0.085699 (+/- 0.036973)
