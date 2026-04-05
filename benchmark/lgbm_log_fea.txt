@@ -1,0 +1,66 @@
+1. Loading dataset...
+Dataset shape: (5337414, 193)
+   -> Đang tối ưu hóa kiểu dữ liệu để chống tràn RAM...
+   -> Bộ nhớ giảm từ 5497.37 MB xuống 3649.65 MB (33.6% reduction)
+Final Train shape: (5337414, 194)
+Scanning 189 features for constant or all-0/all-1 flag columns...
+Total modeling features: 189
+Loaded parameters from f:\Projects\hege_fund_kaggle\models_param\lgb_best_param.json
+
+
+4. Starting Leak-Free Purged K-Fold Training with Best Parameters...
+   -> Đã chuẩn bị xong dữ liệu thô (Lazy mode).
+
+--- Fold 1 ---
+Inner Train samples: 4499687 | Inner Val samples: 767012
+[50]    train's comp_score: 0.149385    valid's comp_score: 0.138149
+[100]   train's comp_score: 0.176755    valid's comp_score: 0.145292
+[150]   train's comp_score: 0.19045     valid's comp_score: 0.153569
+[200]   train's comp_score: 0.202734    valid's comp_score: 0.161827
+[250]   train's comp_score: 0.211036    valid's comp_score: 0.164576
+[300]   train's comp_score: 0.218617    valid's comp_score: 0.16616
+[350]   train's comp_score: 0.225097    valid's comp_score: 0.167924
+[400]   train's comp_score: 0.230579    valid's comp_score: 0.168447
+[450]   train's comp_score: 0.237159    valid's comp_score: 0.166488
+Saved model to f:\Projects\hege_fund_kaggle\models_param\lgbm_fold_1.txt
+Fold 1 Competition Score (R): 0.16955
+
+--- Fold 2 ---
+Inner Train samples: 4244368 | Inner Val samples: 992723
+[50]    train's comp_score: 0.154668    valid's comp_score: 0.0972032
+[100]   train's comp_score: 0.178437    valid's comp_score: 0.101938
+[150]   train's comp_score: 0.192641    valid's comp_score: 0.101686
+Saved model to f:\Projects\hege_fund_kaggle\models_param\lgbm_fold_2.txt
+Fold 2 Competition Score (R): 0.10946
+
+--- Fold 3 ---
+Inner Train samples: 4106348 | Inner Val samples: 1118768
+[50]    train's comp_score: 0.1784      valid's comp_score: 0.04311
+[100]   train's comp_score: 0.203102    valid's comp_score: 0.0178675
+Saved model to f:\Projects\hege_fund_kaggle\models_param\lgbm_fold_3.txt
+Fold 3 Competition Score (R): 0.06136
+
+--- Fold 4 ---
+Inner Train samples: 3973307 | Inner Val samples: 1245053
+[50]    train's comp_score: 0.162761    valid's comp_score: 0.104649
+[100]   train's comp_score: 0.188947    valid's comp_score: 0
+[150]   train's comp_score: 0.201933    valid's comp_score: 0
+Saved model to f:\Projects\hege_fund_kaggle\models_param\lgbm_fold_4.txt
+Fold 4 Competition Score (R): 0.11460
+
+--- Fold 5 ---
+Inner Train samples: 4108476 | Inner Val samples: 1213858
+[50]    train's comp_score: 0.174566    valid's comp_score: 0.0810349
+[100]   train's comp_score: 0.198834    valid's comp_score: 0.0945026
+[150]   train's comp_score: 0.211477    valid's comp_score: 0.0932362
+[200]   train's comp_score: 0.22067     valid's comp_score: 0.0958043
+[250]   train's comp_score: 0.229571    valid's comp_score: 0.0987282
+[300]   train's comp_score: 0.235835    valid's comp_score: 0.0988913
+[350]   train's comp_score: 0.242436    valid's comp_score: 0.0928232
+[400]   train's comp_score: 0.247782    valid's comp_score: 0.0945453
+Saved model to f:\Projects\hege_fund_kaggle\models_param\lgbm_fold_5.txt
+Fold 5 Competition Score (R): 0.10036
+
+==> AVERAGE CV COMPETITION SCORE: 0.111065 (+/- 0.034702)
+
+5. Final Assessment (CV Mean Score): 0.111065

@@ -142,9 +142,37 @@ def run_lgbm(file_path, tuning=False, training=True):
     df = pd.read_parquet(file_path)
     print(f"Dataset shape: {df.shape}")
 
-    # Prepare t1 (Label End Time) column
+    # Prepare t1 (Label End Time) column BEFORE optimization (calculating with category dtype fails)
     df['t1_end'] = df['ts_index'] + df['horizon']
+
+    # --- BƯỚC 1.1: TỐI ƯU HÓA BỘ NHỚ (OOM PREVENTION) ---
+    print("   -> Đang tối ưu hóa kiểu dữ liệu để chống tràn RAM...")
+    start_mem = df.memory_usage().sum() / 1024**2
     
+    # Định nghĩa các nhóm cột
+    exclude_cols = ['y_target', 'weight']
+    cat_cols = ['code', 'sub_code', 'sub_category', 'horizon']
+    
+    for col in df.columns:
+        if col in exclude_cols:
+            continue
+            
+        if col in cat_cols:
+            # Ép kiểu category cho các cột phân loại để LightGBM đọc được DataFrame
+            df[col] = df[col].astype('category')
+        elif col.startswith('feature_'):
+            # Chuyển các đặc trưng về float32
+            df[col] = df[col].astype(np.float32)
+        elif col.startswith('is_nan_'):
+            # Chuyển các cột flag về int8
+            df[col] = df[col].astype(np.int8)
+    
+    end_mem = df.memory_usage().sum() / 1024**2
+    print(f"   -> Bộ nhớ giảm từ {start_mem:.2f} MB xuống {end_mem:.2f} MB ({100 * (start_mem - end_mem) / start_mem:.1f}% reduction)")
+    
+    import gc
+    gc.collect()
+
     # Sort firmly by time to ensure absolute order
     df = df.sort_values(['ts_index', 'code', 'sub_code']).reset_index(drop=True)
     
@@ -266,22 +294,19 @@ def run_lgbm(file_path, tuning=False, training=True):
         print(f"\n\n4. Starting Leak-Free Purged K-Fold Training with Best Parameters...")
         
 
-        X_train_full = train_df[features].values
-        y_train_full = train_df['y_target'].values
-        w_train_full = train_df['weight'].values
+        X_train_full = train_df[features] # Keep as DataFrame (No .values)
+        y_train_full = train_df['y_target']
+        w_train_full = train_df['weight']
         
-        # Keep only essential columns for CV splitting to save memory
-        # LeakFreePurgedKFold needs ts_index and t1_end
         cv_meta = train_df[['ts_index', 't1_end']].copy()
-        del train_df # Giải phóng bộ nhớ RAM
-        del df # Giải phóng bộ nhớ RAM
+        print("   -> Đã chuẩn bị xong dữ liệu thô (Lazy mode).")
         
         fold = 1
         for train_idx, val_idx in cv.split(cv_meta):
             print(f"\n--- Fold {fold} ---")
             
-            X_tr, y_tr, w_tr = X_train_full[train_idx], y_train_full[train_idx], w_train_full[train_idx]
-            X_va, y_va, w_va = X_train_full[val_idx], y_train_full[val_idx], w_train_full[val_idx]
+            X_tr, y_tr, w_tr = X_train_full.iloc[train_idx], y_train_full.iloc[train_idx], w_train_full.iloc[train_idx]
+            X_va, y_va, w_va = X_train_full.iloc[val_idx], y_train_full.iloc[val_idx], w_train_full.iloc[val_idx]
             
             print(f"Inner Train samples: {len(X_tr)} | Inner Val samples: {len(X_va)}")
             
@@ -323,6 +348,8 @@ def run_lgbm(file_path, tuning=False, training=True):
             
             # Giải phóng bộ nhớ từng Fold
             del X_tr, y_tr, w_tr, X_va, y_va, w_va, dtrain, dval
+            import gc
+            gc.collect()
             fold += 1
 
         print(f"\n==> AVERAGE CV COMPETITION SCORE: {np.mean(fold_scores):.6f} (+/- {np.std(fold_scores):.6f})")

@@ -1,0 +1,148 @@
+1. Loading dataset...
+Total modeling features: 189
+
+3. Starting Optuna Hyperparameter Tuning (Institutional Mode)...
+[I 2026-04-05 12:00:28,758] A new study created in memory with name: no-name-212d5da2-3d98-4c97-bf9c-52ce14573095
+    [Trial 0] Depth=6, LR=0.0044, L2=19.9
+    [Trial 0] Competition Score (R): 0.087061 | Best Iter: 55
+[I 2026-04-05 12:00:47,868] Trial 0 finished with value: 0.08706119828096279 and parameters: {'depth': 6, 'border_count': 254, 'learning_rate': 0.004445279777172624, 'l2_leaf_reg': 19.8657657483109, 'random_strength': 3.3057539352037963, 'bagging_temperature': 0.7772736980404661, 'min_data_in_leaf': 12527}. Best is trial 0 with value: 0.08706119828096279.
+    [Trial 1] Depth=6, LR=0.0012, L2=24.8
+    [Trial 1] Competition Score (R): 0.067812 | Best Iter: 207
+[I 2026-04-05 12:01:05,397] Trial 1 finished with value: 0.06781228758911387 and parameters: {'depth': 6, 'border_count': 128, 'learning_rate': 0.0011543901546667206, 'l2_leaf_reg': 24.837902980203303, 'random_strength': 18.777558255180264, 'bagging_temperature': 0.2432877702047801, 'min_data_in_leaf': 13530}. Best is trial 0 with value: 0.08706119828096279.
+    [Trial 2] Depth=7, LR=0.0019, L2=138.2
+    [Trial 2] Competition Score (R): 0.092736 | Best Iter: 146
+[I 2026-04-05 12:01:22,748] Trial 2 finished with value: 0.09273587554266897 and parameters: {'depth': 7, 'border_count': 254, 'learning_rate': 0.001913097285216932, 'l2_leaf_reg': 138.20348816961035, 'random_strength': 19.743210125817658, 'bagging_temperature': 0.5299676058301082, 'min_data_in_leaf': 5228}. Best is trial 2 with value: 0.09273587554266897.
+    [Trial 3] Depth=6, LR=0.0022, L2=138.7
+    [Trial 3] Competition Score (R): 0.077779 | Best Iter: 121
+[I 2026-04-05 12:01:37,181] Trial 3 finished with value: 0.07777892704967615 and parameters: {'depth': 6, 'border_count': 254, 'learning_rate': 0.0022382670087461027, 'l2_leaf_reg': 138.69409355857601, 'random_strength': 1.4000328617874842, 'bagging_temperature': 0.055919493759272854, 'min_data_in_leaf': 12796}. Best is trial 2 with value: 0.09273587554266897.
+    [Trial 4] Depth=4, LR=0.0020, L2=102.3
+    [Trial 4] Competition Score (R): 0.039034 | Best Iter: 48
+[I 2026-04-05 12:01:46,400] Trial 4 finished with value: 0.0390337994628472 and parameters: {'depth': 4, 'border_count': 128, 'learning_rate': 0.0019584383426344935, 'l2_leaf_reg': 102.26773711596991, 'random_strength': 11.095903077764406, 'bagging_temperature': 0.21062963563209902, 'min_data_in_leaf': 14672}. Best is trial 2 with value: 0.09273587554266897.
+    [Trial 5] Depth=4, LR=0.0131, L2=12.7
+    [Trial 5] Competition Score (R): 0.044585 | Best Iter: 12
+[I 2026-04-05 12:01:54,942] Trial 5 finished with value: 0.04458466727945592 and parameters: {'depth': 4, 'border_count': 254, 'learning_rate': 0.013082524937512264, 'l2_leaf_reg': 12.706945334326724, 'random_strength': 44.94158834100184, 'bagging_temperature': 0.44744913681729814, 'min_data_in_leaf': 12144}. Best is trial 2 with value: 0.09273587554266897.
+    [Trial 6] Depth=5, LR=0.0051, L2=100.0
+    [Trial 6] Competition Score (R): 0.063031 | Best Iter: 38
+[I 2026-04-05 12:02:05,055] Trial 6 finished with value: 0.06303145469274095 and parameters: {'depth': 5, 'border_count': 254, 'learning_rate': 0.005073608399340592, 'l2_leaf_reg': 99.98920075784801, 'random_strength': 2.1783432626275228, 'bagging_temperature': 0.7710518373019818, 'min_data_in_leaf': 9994}. Best is trial 2 with value: 0.09273587554266897.
+    [Trial 7] Depth=6, LR=0.0083, L2=157.6
+    [Trial 7] Competition Score (R): 0.052285 | Best Iter: 9
+[I 2026-04-05 12:02:16,550] Trial 7 finished with value: 0.0522851236755819 and parameters: {'depth': 6, 'border_count': 128, 'learning_rate': 0.00826722127958402, 'l2_leaf_reg': 157.64659087346172, 'random_strength': 1.550151636696538, 'bagging_temperature': 0.822266614075517, 'min_data_in_leaf': 9084}. Best is trial 2 with value: 0.09273587554266897.
+    [Trial 8] Depth=6, LR=0.0127, L2=10.9
+    [Trial 8] Competition Score (R): 0.082302 | Best Iter: 26
+[I 2026-04-05 12:02:28,685] Trial 8 finished with value: 0.08230159318817547 and parameters: {'depth': 6, 'border_count': 254, 'learning_rate': 0.01267783719875971, 'l2_leaf_reg': 10.891398253038163, 'random_strength': 35.784305406280204, 'bagging_temperature': 0.809221104856909, 'min_data_in_leaf': 14683}. Best is trial 2 with value: 0.09273587554266897.
+    [Trial 9] Depth=8, LR=0.0021, L2=78.4
+    [Trial 9] Competition Score (R): 0.088184 | Best Iter: 88
+[I 2026-04-05 12:02:46,531] Trial 9 finished with value: 0.0881837809146353 and parameters: {'depth': 8, 'border_count': 128, 'learning_rate': 0.002115777874333281, 'l2_leaf_reg': 78.42723492502772, 'random_strength': 6.822185752328053, 'bagging_temperature': 0.4790140506570506, 'min_data_in_leaf': 9202}. Best is trial 2 with value: 0.09273587554266897.
+    [Trial 10] Depth=8, LR=0.0011, L2=5.6
+    [Trial 10] Competition Score (R): 0.088636 | Best Iter: 163
+[I 2026-04-05 12:03:08,152] Trial 10 finished with value: 0.08863588518113873 and parameters: {'depth': 8, 'border_count': 254, 'learning_rate': 0.0010771002694305765, 'l2_leaf_reg': 5.633328026612017, 'random_strength': 20.01904984017016, 'bagging_temperature': 0.6028224606580491, 'min_data_in_leaf': 3360}. Best is trial 2 with value: 0.09273587554266897.
+    [Trial 11] Depth=8, LR=0.0010, L2=5.4
+    [Trial 11] Competition Score (R): 0.096549 | Best Iter: 231
+[I 2026-04-05 12:03:32,392] Trial 11 finished with value: 0.09654859163610503 and parameters: {'depth': 8, 'border_count': 254, 'learning_rate': 0.0010434994382337271, 'l2_leaf_reg': 5.360537423083272, 'random_strength': 18.372325893730363, 'bagging_temperature': 0.5796145738441343, 'min_data_in_leaf': 3701}. Best is trial 11 with value: 0.09654859163610503.
+    [Trial 12] Depth=7, LR=0.0015, L2=49.5
+    [Trial 12] Competition Score (R): 0.093900 | Best Iter: 191
+[I 2026-04-05 12:03:52,309] Trial 12 finished with value: 0.09389985066461232 and parameters: {'depth': 7, 'border_count': 254, 'learning_rate': 0.0015360160142556822, 'l2_leaf_reg': 49.52534381087776, 'random_strength': 7.636319633509156, 'bagging_temperature': 0.9879350897295153, 'min_data_in_leaf': 4149}. Best is trial 11 with value: 0.09654859163610503.
+    [Trial 13] Depth=7, LR=0.0011, L2=49.7
+    [Trial 13] Competition Score (R): 0.092720 | Best Iter: 273
+[I 2026-04-05 12:04:14,151] Trial 13 finished with value: 0.09271988903612051 and parameters: {'depth': 7, 'border_count': 254, 'learning_rate': 0.0010880483327401255, 'l2_leaf_reg': 49.71603459729465, 'random_strength': 6.511050661093082, 'bagging_temperature': 0.97835017483311, 'min_data_in_leaf': 5823}. Best is trial 11 with value: 0.09654859163610503.
+    [Trial 14] Depth=7, LR=0.0032, L2=43.3
+    [Trial 14] Competition Score (R): 0.088760 | Best Iter: 103
+[I 2026-04-05 12:04:30,631] Trial 14 finished with value: 0.08876011789505509 and parameters: {'depth': 7, 'border_count': 254, 'learning_rate': 0.003214224699158166, 'l2_leaf_reg': 43.27712204744743, 'random_strength': 4.6901290639482465, 'bagging_temperature': 0.9802689182566751, 'min_data_in_leaf': 2272}. Best is trial 11 with value: 0.09654859163610503.
+    [Trial 15] Depth=8, LR=0.0015, L2=6.9
+    [Trial 15] Competition Score (R): 0.101305 | Best Iter: 198
+[I 2026-04-05 12:04:54,007] Trial 15 finished with value: 0.10130515045211674 and parameters: {'depth': 8, 'border_count': 254, 'learning_rate': 0.0014518294494300988, 'l2_leaf_reg': 6.923067775107316, 'random_strength': 11.37783400603602, 'bagging_temperature': 0.6571955509395528, 'min_data_in_leaf': 6416}. Best is trial 15 with value: 0.10130515045211674.
+    [Trial 16] Depth=8, LR=0.0032, L2=5.0
+    [Trial 16] Competition Score (R): 0.097194 | Best Iter: 78
+[I 2026-04-05 12:05:12,030] Trial 16 finished with value: 0.09719404011100972 and parameters: {'depth': 8, 'border_count': 254, 'learning_rate': 0.003185087308569228, 'l2_leaf_reg': 5.03217948638256, 'random_strength': 12.540078737234213, 'bagging_temperature': 0.6593475405905062, 'min_data_in_leaf': 6889}. Best is trial 15 with value: 0.10130515045211674.
+    [Trial 17] Depth=8, LR=0.0032, L2=9.8
+    [Trial 17] Competition Score (R): 0.100317 | Best Iter: 104
+[I 2026-04-05 12:05:31,118] Trial 17 finished with value: 0.10031691739236999 and parameters: {'depth': 8, 'border_count': 254, 'learning_rate': 0.0032381878392226957, 'l2_leaf_reg': 9.849420871161014, 'random_strength': 11.571500319855822, 'bagging_temperature': 0.6772180775490348, 'min_data_in_leaf': 7128}. Best is trial 15 with value: 0.10130515045211674.
+    [Trial 18] Depth=8, LR=0.0067, L2=9.8
+    [Trial 18] Competition Score (R): 0.092291 | Best Iter: 34
+[I 2026-04-05 12:05:46,371] Trial 18 finished with value: 0.09229089364413691 and parameters: {'depth': 8, 'border_count': 128, 'learning_rate': 0.006678935356463919, 'l2_leaf_reg': 9.793472981825893, 'random_strength': 10.577506966924457, 'bagging_temperature': 0.3674763339165988, 'min_data_in_leaf': 7223}. Best is trial 15 with value: 0.10130515045211674.
+    [Trial 19] Depth=5, LR=0.0031, L2=16.5
+    [Trial 19] Competition Score (R): 0.061403 | Best Iter: 79
+[I 2026-04-05 12:05:58,524] Trial 19 finished with value: 0.06140336437178079 and parameters: {'depth': 5, 'border_count': 254, 'learning_rate': 0.003097600717187067, 'l2_leaf_reg': 16.450795436825178, 'random_strength': 4.188567944008446, 'bagging_temperature': 0.6924565560707437, 'min_data_in_leaf': 10610}. Best is trial 15 with value: 0.10130515045211674.
+
+
+4. Starting Leak-Free Purged K-Fold Training (Institutional Mode)...
+
+--- Fold 1 ---
+Inner Train samples: 4499687 | Inner Val samples: 767012
+0:      learn: 225.0876327      test: 160.8438101       best: 160.8438101 (0)   total: 269ms    remaining: 35m 52s
+200:    learn: 223.7860330      test: 160.2437237       best: 160.2437237 (200) total: 1m       remaining: 38m 59s
+400:    learn: 222.9308117      test: 159.9656218       best: 159.9656218 (400) total: 1m 42s   remaining: 32m 28s
+600:    learn: 222.2948763      test: 159.7201146       best: 159.7201146 (600) total: 2m 21s   remaining: 29m 7s
+800:    learn: 221.8293907      test: 159.4925030       best: 159.4925030 (800) total: 3m       remaining: 27m 6s
+1000:   learn: 221.4595175      test: 159.4336411       best: 159.4061980 (955) total: 3m 39s   remaining: 25m 36s
+1200:   learn: 221.1393988      test: 159.4235798       best: 159.4061980 (955) total: 4m 18s   remaining: 24m 22s
+bestTest = 159.406198
+bestIteration = 955
+Shrink model to first 956 iterations.
+Saved model to f:\Projects\hege_fund_kaggle\models_param\cb_fold_1.cbm
+Fold 1 Competition Score (R): 0.133748 | Best Iter: 955
+
+--- Fold 2 ---
+Inner Train samples: 4244368 | Inner Val samples: 992723
+0:      learn: 202.8800626      test: 257.1081781       best: 257.1081781 (0)   total: 185ms    remaining: 24m 43s
+200:    learn: 201.6409339      test: 256.5198391       best: 256.5198391 (200) total: 35.9s    remaining: 23m 13s
+400:    learn: 200.7750231      test: 256.6988851       best: 256.4416760 (234) total: 1m 12s   remaining: 22m 48s
+bestTest = 256.441676
+bestIteration = 234
+Shrink model to first 235 iterations.
+Saved model to f:\Projects\hege_fund_kaggle\models_param\cb_fold_2.cbm
+Fold 2 Competition Score (R): 0.073438 | Best Iter: 234
+
+--- Fold 3 ---
+Inner Train samples: 4106348 | Inner Val samples: 1118768
+0:      learn: 207.9835302      test: 214.3720191       best: 214.3720191 (0)   total: 227ms    remaining: 30m 17s
+200:    learn: 206.6450382      test: 213.8852551       best: 213.8852551 (200) total: 31.4s    remaining: 20m 19s
+400:    learn: 205.7164539      test: 213.7854557       best: 213.7852338 (399) total: 1m 3s    remaining: 19m 57s
+600:    learn: 204.9891345      test: 213.7998700       best: 213.7829664 (415) total: 1m 36s   remaining: 19m 43s
+bestTest = 213.7829664
+bestIteration = 415
+Shrink model to first 416 iterations.
+Saved model to f:\Projects\hege_fund_kaggle\models_param\cb_fold_3.cbm
+Fold 3 Competition Score (R): 0.072809 | Best Iter: 415
+
+--- Fold 4 ---
+Inner Train samples: 3973307 | Inner Val samples: 1245053
+0:      learn: 213.4915593      test: 197.2568257       best: 197.2568257 (0)   total: 292ms    remaining: 38m 54s
+200:    learn: 212.3941483      test: 196.6168576       best: 196.6168576 (200) total: 32.9s    remaining: 21m 16s
+400:    learn: 211.5500575      test: 196.1780490       best: 196.1780490 (400) total: 1m 6s    remaining: 21m 2s
+600:    learn: 210.9444066      test: 195.9202138       best: 195.9202138 (600) total: 1m 39s   remaining: 20m 30s
+800:    learn: 210.4783470      test: 195.8135687       best: 195.8114266 (749) total: 2m 13s   remaining: 20m 3s
+1000:   learn: 210.0874154      test: 195.7334595       best: 195.7334595 (1000)        total: 2m 46s   remaining: 19m 24s
+1200:   learn: 209.7273181      test: 195.6277278       best: 195.6268020 (1193)        total: 3m 19s   remaining: 18m 51s
+1400:   learn: 209.3817809      test: 195.5418387       best: 195.5418387 (1400)        total: 3m 53s   remaining: 18m 17s
+1600:   learn: 209.0690005      test: 195.4746071       best: 195.4746071 (1600)        total: 4m 25s   remaining: 17m 42s
+1800:   learn: 208.8016451      test: 195.4416045       best: 195.4407753 (1790)        total: 4m 57s   remaining: 17m 5s
+2000:   learn: 208.5639858      test: 195.4033439       best: 195.4033439 (2000)        total: 5m 29s   remaining: 16m 28s
+2200:   learn: 208.3421206      test: 195.3791202       best: 195.3789169 (2194)        total: 6m       remaining: 15m 50s
+2400:   learn: 208.1340579      test: 195.3404243       best: 195.3386024 (2394)        total: 6m 31s   remaining: 15m 13s
+2600:   learn: 207.9128332      test: 195.3301187       best: 195.3270847 (2542)        total: 7m 3s    remaining: 14m 39s
+2800:   learn: 207.6978927      test: 195.3400339       best: 195.3264909 (2696)        total: 7m 34s   remaining: 14m 4s
+bestTest = 195.3264909
+bestIteration = 2696
+Shrink model to first 2697 iterations.
+Saved model to f:\Projects\hege_fund_kaggle\models_param\cb_fold_4.cbm
+Fold 4 Competition Score (R): 0.130090 | Best Iter: 2696
+
+--- Fold 5 ---
+Inner Train samples: 4108476 | Inner Val samples: 1213858
+0:      learn: 201.0079746      test: 255.6280229       best: 255.6280229 (0)   total: 302ms    remaining: 40m 14s
+200:    learn: 199.6057929      test: 255.1010765       best: 255.1010765 (200) total: 35.2s    remaining: 22m 46s
+400:    learn: 198.6269014      test: 254.7292368       best: 254.7292368 (400) total: 1m 9s    remaining: 21m 51s
+600:    learn: 197.9258970      test: 254.4924455       best: 254.4924455 (600) total: 1m 44s   remaining: 21m 24s
+800:    learn: 197.4212739      test: 254.3960627       best: 254.3960627 (800) total: 2m 18s   remaining: 20m 43s
+1000:   learn: 197.0579073      test: 254.4185845       best: 254.3844353 (967) total: 2m 51s   remaining: 19m 56s
+1200:   learn: 196.7490772      test: 254.4500658       best: 254.3844353 (967) total: 3m 24s   remaining: 19m 18s
+bestTest = 254.3844353
+bestIteration = 967
+Shrink model to first 968 iterations.
+Saved model to f:\Projects\hege_fund_kaggle\models_param\cb_fold_5.cbm
+Fold 5 Competition Score (R): 0.094996 | Best Iter: 967
+
+==> AVERAGE CV COMPETITION SCORE: 0.101016 (+/- 0.026492)
+
+5. Final Assessment (CV Mean Score): 0.101016
