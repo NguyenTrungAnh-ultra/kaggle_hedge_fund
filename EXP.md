@@ -1,27 +1,42 @@
-# Nhật ký Thực nghiệm và So sánh Chi tiết (EXP.md)
+# Nhật ký Thực nghiệm và Phân tích Giải pháp (EXP.md)
 
-Tài liệu này ghi nhận so sánh chi tiết từng bước (Step-by-step) giữa mô hình hiện tại của chúng ta (**LB 0.1885**) và giải pháp gốc của tác giả đạt vị trí thứ 5 dựa trên tệp `multiple-lightgbm-approach.ipynb` (đây là tệp giải pháp chính thức mới đúng).
+Tài liệu này ghi nhận quá trình phân tích và so sánh chi tiết giữa mô hình hiện tại của chúng ta (**LB 0.1885**) với hai biến thể giải pháp Top 5 được tìm thấy trong thư mục:
+1. **Giải pháp Top 5 "Fake"** (`lgb-causal-insights-0-1993-0-2048-5th.ipynb`): Chứa các kỹ thuật thú vị như Recency Weighting, Target Clipping nhưng bị rò rỉ dữ liệu (Data Leakage) nghiêm trọng.
+2. **Giải pháp Top 5 "Real"** (`multiple-lightgbm-approach.ipynb`): Giải pháp gốc thực sự của tác giả hạng 5, một người hoàn toàn khác, với cách tiếp cận tối giản, không điền khuyết NaN và không bị rò rỉ.
 
 ---
 
-## 📌 1. Bảng So sánh Toàn diện từng bước (Chúng ta vs. Tác giả)
+## 📌 Phần 1: So sánh Chúng ta vs. Top 5 "Fake" (lgb-causal-insights...)
 
-| Giai đoạn | Mô hình của chúng ta (LB: 0.1885) | Giải pháp gốc của tác giả (Tệp chuẩn) | Điểm khác biệt cốt lõi |
+Đây là giải pháp ban đầu được nhầm tưởng là giải pháp thực sự. Dù vậy, nó chứa một số kỹ thuật (cả hữu ích lẫn có hại) đáng để mổ xẻ.
+
+| Giai đoạn | Mô hình của chúng ta (LB: 0.1885) | Giải pháp "Fake" Top 5 | Đánh giá / Khác biệt |
 | :--- | :--- | :--- | :--- |
-| **1. Tiền xử lý dữ liệu thô** | • Áp dụng `ffill` và `median`.<br>• Dùng Cross-Sectional Z-Score cho `feature_bd`. | • **KHÔNG làm gì cả**. Dữ liệu được ném thẳng vào để LightGBM tự xử lý `NaN` một cách tự nhiên. Tác giả có ghi chú về chuẩn hóa chéo trong văn bản nhưng trong code lại không hề có. | 🔴 Việc điền khuyết của ta làm mất tín hiệu "bị thiếu" gốc. Tác giả dựa hoàn toàn vào khả năng xử lý NaN của LGBM. |
-| **2. Kỹ thuật Đặc trưng (FE)** | • Sử dụng **Causal Lags** cho 4 biến.<br>• Thêm `log_horizon`. | • Tạo **Features cực kỳ sắc bén**: Chỉ lấy 5 đặc trưng quan trọng nhất (`feature_al`, `feature_am`, `feature_cg`, `feature_by`, `feature_s`) để tạo lags, diff, rolling mean/std, EWM.<br>• Thêm đặc trưng **Tương tác**: Tính hiệu số (`al - am`, `cg - by`) và tỷ lệ (`al / am`).<br>• Thêm đặc trưng **Chu kỳ thời gian**: Dùng hàm lượng giác `sin(2*pi*ts_index/100)`. | 🔴 **Đặc trưng của tác giả rất tinh gọn nhưng có tính tương tác cao**, tập trung vào nhóm các đặc trưng lõi. Dùng cả EWM và chu kỳ thời gian để bắt sóng thị trường. |
-| **3. Target Encoding (TE)** | • TE được tính toán cẩn thận trong CV để tránh leak. | • Tính TE trung bình trên tập `ts_index <= 3500`. Tập hold-out và tập Test lấy bản đồ này để ánh xạ (map) sang. | 🤝 Cả hai đều **không bị rò rỉ dữ liệu**. Tác giả làm rất cẩn thận ở bước này. |
-| **4. Đánh giá chéo (CV)** | • **5-Fold Purged K-Fold CV**. Đánh giá toàn diện. | • Tách dữ liệu tĩnh (Hold-out): Huấn luyện trên `ts_index <= 3500`, Valid trên khúc đuôi `ts_index > 3500`. | 🟡 Của ta dùng K-Fold phức tạp hơn, của tác giả đánh giá đơn giản trên khúc đuôi. |
-| **5. Cơ chế Huấn luyện & Dự báo** | • Huấn luyện 20 mô hình trên **100% dữ liệu Train**. | • Chỉ dùng tập **`ts_index <= 3500` để huấn luyện**, dừng sớm (early stopping) dựa trên tập `> 3500`. Sau đó dự đoán thẳng lên tập Test bằng 5 seeds. | 🔴 **Khác biệt LỚN**: Tác giả KHÔNG học trên đoạn dữ liệu từ 3501 trở đi! Khúc đuôi chỉ dùng để kìm hãm mô hình (chống Overfit). |
+| **Tiền xử lý (NaN)** | Điền khuyết bằng `ffill` và `median`. | Điền khuyết bằng `ffill` và Cross-Sectional Mean. | Cả hai đều điền khuyết, nhưng ta dùng Median an toàn hơn trước ngoại lai. |
+| **Target Encoding** | Ánh xạ TE chuẩn xác bên trong từng Fold của Cross-Validation. | Ánh xạ TE sử dụng giá trị trung bình toàn cục (kết hợp cả Train và Test). | 🔴 **Leakage Nghiêm Trọng**: Giải pháp "fake" này bị rò rỉ dữ liệu từ tập Test ngược về tập Train thông qua Target Encoding toàn cục. Đây là lý do điểm CV của họ bị ảo. |
+| **Trọng số Thời gian** | Không dùng. (Chỉ dùng trọng số gốc `weight`). | Dùng **Recency Weighting**: Giảm dần trọng số các mẫu cũ theo quy luật phân rã hàm mũ (Half-life = 0.5). | 🤝 Kỹ thuật này rất hay để ép mô hình tập trung vào xu hướng gần đây nhất. Đáng để chúng ta học hỏi. |
+| **Bảo vệ Ngoại lai** | Dùng điều chuẩn L1/L2 mạnh để phanh ngoại lai. | Dùng **Target Clipping**: Cắt cụt target (y_target) ở phân vị 5% và 95% theo từng horizon. | 🤝 Cắt cụt target trước khi huấn luyện giúp giảm độ nhạy của LGBM với nhiễu thị trường. |
 
 ---
 
-## 🔍 2. Bài học rút ra từ Giải pháp thực sự
+## 📌 Phần 2: Phân tích Kỹ thuật của Top 5 "Real" (multiple-lightgbm-approach.ipynb)
 
-Sau khi phân tích đúng tệp giải pháp hạng 5 (`multiple-lightgbm-approach.ipynb`), tôi nhận ra phương pháp của họ tuy đơn giản nhưng rất sắc sảo:
+Sau khi kiểm tra tệp giải pháp thực sự (`multiple-lightgbm-approach.ipynb`) đến từ một tác giả khác hoàn toàn, chúng ta thấy một tư duy thiết kế trái ngược với bản "Fake" và hoàn toàn sạch sẽ (Không bị rò rỉ dữ liệu). 
 
-1. **Tin tưởng hoàn toàn vào LightGBM để xử lý NaN:** Họ không dùng ffill hay median. Các cây quyết định của LGBM sẽ tự động coi "thiếu dữ liệu" là một nhánh phân loại đặc biệt (missing=True).
-2. **Kỹ nghệ đặc trưng rất thông minh:** Họ không làm tràn lan. Họ nhận ra các đặc trưng như `al` và `am` có quan hệ nội tại, nên đã tạo ra hẳn tỷ lệ phân số (`al/am`) và độ chênh lệch (`al-am`). Tương tự với `cg` và `by`. Ngoài ra, họ thêm sóng chu kỳ thời gian (t_cycle) để bắt biến động theo mùa.
-3. **Chống Overfit triệt để:** Họ không học dữ liệu cuối cùng (khúc `> 3500`) mà dùng nó làm bộ định chuẩn (Early Stopping) để chốt số lượng cây. Điều này khiến mô hình an toàn trên tập Private Test (vốn dĩ là một đoạn tương lai dài hơn).
+### Các Kỹ Thuật Đặc Biệt Tác Giả Sử Dụng:
+1. **Hoàn toàn KHÔNG điền khuyết (Zero Imputation):**
+   Tác giả để nguyên `NaN`. Dữ liệu được ném thẳng vào để LightGBM tự phân nhánh trên các giá trị thiếu. Tác giả ngầm coi "sự vắng mặt của dữ liệu" (missingness) là một tín hiệu giao dịch quan trọng.
 
-**Kết luận:** FE của chúng ta tuy đồ sộ nhưng ít tính tương tác chéo hơn tác giả. Chúng ta huấn luyện full 100% dữ liệu có thể dẫn đến hiện tượng Overfit cục bộ ở đoạn cuối cùng, trong khi tác giả chủ động hi sinh đoạn cuối đó để tăng cường tính khái quát hóa (Generalization). Mặc dù chúng ta không bị leak, nhưng cách họ thiết kế hệ thống thì thông minh hơn hẳn ở khâu chắt lọc đặc trưng và xử lý NaN.
+2. **Kỹ nghệ Đặc trưng (Feature Engineering) "Sắc như dao cạo":**
+   - **Tập trung hóa:** Tác giả không làm lag tràn lan. Họ chỉ dùng đúng 5 đặc trưng quan trọng nhất (`feature_al`, `feature_am`, `feature_cg`, `feature_by`, `feature_s`) để làm phái sinh (Lags, Diff, Rolling Mean/Std, Exponential Weighted Moving Average - EWM).
+   - **Tương tác Chéo (Interactions):** Tạo ra tỷ lệ phân số (`al / am`) và hiệu số (`al - am`, `cg - by`). Điều này bắt được sự bất đồng điệu giữa các nhóm tài sản.
+   - **Sóng Chu kỳ Lượng giác:** Dùng hàm `sin(2*pi*ts_index/100)` để bắt chu kỳ thời gian (Seasonality) của thị trường.
+
+3. **Chống Overfit Cực Đoan (Tách Hold-out Tĩnh):**
+   Thay vì dùng K-Fold phức tạp hay huấn luyện 100% dữ liệu như chúng ta, tác giả cắt đúng một nhát: `ts_index <= 3500` làm tập Huấn luyện và `> 3500` làm tập Xác thực (Early Stopping). Khi dự đoán trên Test Set, mô hình hoàn toàn **chưa từng được học** dữ liệu từ 3501 trở đi. Họ chủ động hi sinh đoạn cuối để đạt tính Generalization tối đa trên Private LB (Đề phòng thị trường tương lai biến đổi lớn).
+
+4. **Target Encoding An Toàn (Leak-Free):**
+   Giống với pipeline chuẩn của chúng ta, tác giả tính Target Encoding cực kỳ cẩn thận chỉ trên tập Huấn luyện (`<= 3500`) sau đó map giá trị đó sang Test. Hoàn toàn không bị Leakage.
+
+### 🔍 Kết luận: 
+Trong khi giải pháp "Fake" có Target Clipping và Recency Weighting để chống nhiễu (nhưng bị dính Data Leakage), thì giải pháp "Real" lại dựa vào **Tương tác đặc trưng tinh gọn**, **Zero Imputation** và cơ chế **Hold-out tĩnh** để giành chiến thắng một cách đường hoàng. Chúng ta đang đứng ở vị thế rất tốt vì base model của ta sạch 100% như bản "Real", và ta hoàn toàn có thể thử nghiệm nghiệm thu các kỹ thuật Feature Engineering xuất sắc của họ để đẩy điểm LB 0.1885 lên cao hơn nữa.
