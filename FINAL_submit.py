@@ -1,142 +1,220 @@
-import pandas as pd
-import numpy as np
-import lightgbm as lgb
-from Models.metric import weighted_rmse_score
+import sys
 import os
-import time
-import warnings
-import json
-from Modules.PurgedKFold import LeakFreePurgedKFold
+import gc
+import glob
+import numpy as np
+import pandas as pd
+import lightgbm as lgb
+from pathlib import Path
 
+# Force UTF-8 encoding for stdout on Windows to prevent UnicodeEncodeError
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 
-warnings.filterwarnings('ignore')
+# ====================================================================
+# CONFIGURATION
+# ====================================================================
+PROJECT_ROOT = Path(__file__).resolve().parent
+DATA_DIR = PROJECT_ROOT
+MODELS_DIR = PROJECT_ROOT / 'models_param'
+TEST_DIR = PROJECT_ROOT / 'test_result'
+os.makedirs(TEST_DIR, exist_ok=True)
 
-# --- PATHS ---
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR = os.path.join(BASE_DIR, 'ts-forecasting')
-TRAIN_RAW = os.path.join(DATA_DIR, 'train.parquet')
-TEST_RAW = os.path.join(DATA_DIR, 'test.parquet')
-REPORT_FILE = os.path.join(BASE_DIR, 'reports', 'report_COMPARISON.csv')
-PROCESSED_DATA = os.path.join(DATA_DIR, 'inference_processed_full.parquet')
-MODELS_DIR = os.path.join(BASE_DIR, 'models_param')
-BEST_PARAMS_PATH = os.path.join(MODELS_DIR, 'lgb_best_param.json')
-SUBMISSION_FILE = os.path.join(BASE_DIR, 'test_result', 'submission.csv')
+HORIZONS = [1, 3, 10, 25]
+SEEDS = [42, 123, 7, 2024, 999]
+SIGN_SPLIT_FEATURES = ['feature_n', 'feature_w', 'feature_x', 'feature_y', 'feature_z', 'feature_al', 'feature_ce']
+LAG_FEATURES = ['feature_al', 'feature_am', 'feature_cg', 'feature_by']
+LAGS = [1, 3, 5, 10, 25]
 
-def lgb_weighted_rmse(preds, dataset):
-    y_true = dataset.get_label()
-    w = dataset.get_weight()
-    score = weighted_rmse_score(y_true, preds, w)
-    return 'weighted_rmse', score, True
+from Models.Lightgbm import (
+    apply_advanced_features,
+    make_recency_weights,
+    compute_target_encoding,
+    apply_target_encoding,
+    select_top_features,
+    LGB_PARAMS_BASE
+)
 
-def main(retrain=False):
-    print(f"=== KAGGLE INFERENCE PIPELINE ===")
-    start_time = time.time()
+def train_final_full_models():
+    print("\n=== RETRAINING MODELS ON 100% TRAINING DATA (FULL DATASET) ===")
     
-    # Phase 1 & 2: Load Preprocessed Data Directly
-    print(f"1. Loading preprocessed data from {PROCESSED_DATA}...")
-    df = pd.read_parquet(PROCESSED_DATA)
-    print(f"Data_shape: {df.shape}")
-
-    print("\n2. Feature Engineering & Set Isolation...")
-    # Tính t1_end để dùng cho Purging nếu retrain
-    df['t1_end'] = df['ts_index'] + df['horizon']
-
-    # BÂY GIỜ mới tiến hành tách dữ liệu
-    train_only = df[df['is_test'] == 0].copy()
+    train_path = DATA_DIR / 'ts-forecasting' / 'train_feature_builded.parquet'
+    print(f"Loading training data from {train_path}...")
+    train_df = pd.read_parquet(train_path)
     
-    print("   Isolating Test Frame for Inference...")
-    df = df.sort_values(['ts_index', 'code', 'sub_code', 'horizon']).reset_index(drop=True)
-    test_processed = df[df['is_test'] == 1].copy()
-    del df # Giải phóng bộ nhớ RAM
+    print("   -> Applying Causal Insights (Lags only) on FULL dataset...")
+    train_df = apply_advanced_features(train_df)
+    
+    print("   -> Optimizing data types to prevent RAM overflow...")
+    exclude_cols = ['y_target', 'weight']
+    cat_cols = ['code', 'sub_code', 'sub_category', 'horizon']
+    
+    for col in train_df.columns:
+        if col in exclude_cols:
+            continue
+        if col in cat_cols:
+            train_df[col] = train_df[col].astype('category')
+        elif col.startswith('is_nan_'):
+            train_df[col] = train_df[col].astype(np.int8)
             
-    print("\n4. Feature Selection & Model Deployment...")
-    exclude = ['id', 'y_target', 'weight', 'ts_index', 'is_test', 't1_end']
-    features = [c for c in train_only.columns if c not in exclude]
-    
-    # Drop constant columns
-    print(f"Scanning {len(features)} features for constant columns...")
-    const_cols = [col for col in features if train_only[col].nunique() <= 1]
-            
-    if const_cols:
-        print(f" > Dropping {len(const_cols)} constant columns.")
-        features = [c for c in features if c not in const_cols]
-            
-    print(f"Matrix Dimension Checked: {len(features)} aligned features.")
-    
-    models = []
-    fold_paths = [os.path.join(MODELS_DIR, f"lgbm_fold_{i}.txt") for i in range(1, 6)]
-    ENSEMBLE_EXISTS = all(os.path.exists(p) for p in fold_paths)
-    
-    if ENSEMBLE_EXISTS and not retrain:
-        print(" > Found 5-Fold Ensemble files. Loading models...")
-        for p in fold_paths:
-            models.append(lgb.Booster(model_file=p))
-    elif os.path.exists(BEST_PARAMS_PATH):
-        print(f" > Ensemble missing or retrain=True. Retraining...")
-        with open(BEST_PARAMS_PATH, 'r') as f:
-            best_params = json.load(f)
+    # Filter valid targets
+    valid_mask = train_df['y_target'].notna()
+    if not valid_mask.all():
+        train_df = train_df[valid_mask].copy().reset_index(drop=True)
         
-        cv = LeakFreePurgedKFold(n_splits=5, pctEmbargo=0.01)
+    train_df = train_df.sort_values(['ts_index', 'code', 'sub_code']).reset_index(drop=True)
+    
+    # Calibrated trees per horizon from author's CV
+    N_EST_PER_HORIZON = {1: 134, 3: 157, 10: 116, 25: 215}
+    
+    for h in HORIZONS:
+        print(f"\n >> Training Horizon {h} on 100% data...")
+        h_mask = train_df['horizon'] == h
+        h_train = train_df[h_mask].copy().reset_index(drop=True)
         
-        X_train_full = train_only[features].values
-        y_train_full = train_only['y_target'].values
-        w_train_full = train_only['weight'].values
+        # Apply target encoding
+        enc_maps, global_mean = compute_target_encoding(h_train)
+        h_train = apply_target_encoding(h_train, enc_maps, global_mean)
         
-        for fold, (tr_idx, va_idx) in enumerate(cv.split(train_only), 1):
-            print(f"\n   --- Retraining Fold {fold} ---")
-            X_tr, y_tr, w_tr = X_train_full[tr_idx], y_train_full[tr_idx], w_train_full[tr_idx]
-            X_va, y_va, w_va = X_train_full[va_idx], y_train_full[va_idx], w_train_full[va_idx]
+        # Feature Selection
+        exclude_feats = ['id', 'y_target', 'weight', 'ts_index', 't1_end', 'horizon', 'code', 'sub_code', 'sub_category']
+        candidate_features = [c for c in h_train.columns if c not in exclude_feats and 'logret' not in c]
+        
+        top_features = select_top_features(h_train, candidate_features, n_features=50)
+        
+        # Final features list
+        must_keep = ['code', 'sub_code', 'sub_category', 'sub_code_target_enc', 'sub_category_target_enc']
+        h_features = list(dict.fromkeys([c for c in must_keep if c in h_train.columns] + top_features))
+        
+        cat_indices = [h_features.index(c) for c in ['code', 'sub_code', 'sub_category'] if c in h_features]
+        
+        # Target clipping
+        y_all = h_train['y_target'].values.copy()
+        lo_val = np.percentile(y_all, 5)
+        hi_val = np.percentile(y_all, 95)
+        y_all_clipped = np.clip(y_all, lo_val, hi_val)
+        
+        # Recency weights
+        ts_all = h_train['ts_index']
+        w_all = h_train['weight'].values.copy()
+        w_all = w_all * make_recency_weights(ts_all, half_life_frac=0.5)
+        
+        n_est = N_EST_PER_HORIZON[h]
+        
+        for seed in SEEDS:
+            print(f"    - Seed {seed}...")
+            params = LGB_PARAMS_BASE.copy()
+            params['random_state'] = seed
+            params['n_estimators'] = n_est
             
-            dtrain = lgb.Dataset(X_tr, label=y_tr, weight=w_tr)
-            dval = lgb.Dataset(X_va, label=y_va, weight=w_va, reference=dtrain)
-
-            params = best_params.copy()
-            params.update({
-                'objective': 'regression',
-                'metric': 'None',
-                'verbosity': -1,
-                'boosting_type': 'gbdt',
-                'device': 'cpu'
-            })
-            num_boost_round = params.pop('n_estimators', 1000)
-
+            dtrain = lgb.Dataset(
+                h_train[h_features], label=y_all_clipped, weight=w_all, categorical_feature=cat_indices
+            )
+            
             model = lgb.train(
                 params,
                 dtrain,
-                valid_sets=[dval],
-                valid_names=['valid'],
-                feval=lgb_weighted_rmse,
-                num_boost_round=num_boost_round,
-                callbacks=[lgb.early_stopping(stopping_rounds=50, verbose=False)]
+                num_boost_round=n_est
             )
             
-            m_path = fold_paths[fold-1]
-            model.save_model(m_path)
+            # Save final full model
+            model_name = MODELS_DIR / f'lgbm_h{h}_full_seed{seed}.txt'
+            model.save_model(model_name)
             
-            v_preds = model.predict(X_va)
-            v_wrmse = weighted_rmse_score(y_va, v_preds, w_va)
-            print(f"   Fold {fold} Weighted RMSE: {v_wrmse:.5f}")
-            models.append(model)
-    else:
-        print("FATAL: Neither ensemble models nor best parameters found. Cannot proceed.")
-        return
+            del dtrain, model
+            gc.collect()
             
-    X_test = test_processed[features].values
+    print("=== FINISHED TRAINING FULL MODELS ===")
+
+def main(retrain=False):
+    print("=== KAGGLE INFERENCE PIPELINE (0.2 ADVANCED ARCHITECTURE) ===")
     
-    print(f"\n7. Activating Inference Engine (Yielding over {len(X_test)} entities)...")
-    preds = np.zeros(len(X_test))
+    expected_models = len(HORIZONS) * len(SEEDS)  # 4 horizons * 5 seeds = 20 models
+    found_models = glob.glob(str(MODELS_DIR / 'lgbm_h*_full_seed*.txt'))
     
-    for i, m in enumerate(models, 1):
-        print(f" > Deploying Fold {i} model...")
-        preds += m.predict(X_test) / len(models)
+    if len(found_models) < expected_models or retrain:
+        print(f" > Found {len(found_models)}/{expected_models} models. Retraining is required!")
+        train_final_full_models()
+    
+    print("\n1. Loading preprocessed data from inference_processed_full.parquet...")
+    test_df = pd.read_parquet(DATA_DIR / 'ts-forecasting' / 'inference_processed_full.parquet')
+    print(f"Data_shape: {test_df.shape}")
+
+    # Generate the Causal Insights Features across the FULL test dataset BEFORE filtering
+    test_df = apply_advanced_features(test_df)
+
+    print("\n2. Isolating Test Frame for Inference...")
+    test_processed = test_df[test_df['is_test'] == 1].copy()
+    
+    print("   -> Computing target encoding maps from training set...")
+    train_path = DATA_DIR / 'ts-forecasting' / 'train_feature_builded.parquet'
+    train_df = pd.read_parquet(train_path, columns=['sub_code', 'sub_category', 'y_target'])
+    enc_maps, global_mean = compute_target_encoding(train_df)
+    test_processed = apply_target_encoding(test_processed, enc_maps, global_mean)
+    
+    del test_df, train_df
+    gc.collect()
+    
+    cat_cols = ['code', 'sub_code', 'sub_category']
+    for col in cat_cols:
+        if col in test_processed.columns:
+            test_processed[col] = test_processed[col].astype('category')
+            
+    print("\n4. Activating 5-Seed Inference Engine (Full Data Models)...")
+    preds = np.zeros(len(test_processed))
+    
+    for h in HORIZONS:
+        print(f" > Processing Horizon {h}...")
+        mask = (test_processed['horizon'] == h)
+        if not mask.any():
+            continue
+            
+        h_test = test_processed[mask].copy()
         
-    test_processed['y_target'] = preds
-    submission = test_processed[['id', 'y_target']].rename(columns={'y_target': 'prediction'})
+        # Load the first model to get the exact feature names used in training
+        first_model_path = str(MODELS_DIR / f'lgbm_h{h}_full_seed42.txt')
+        if not os.path.exists(first_model_path):
+            raise FileNotFoundError(f"Missing model file: {first_model_path}")
+            
+        first_booster = lgb.Booster(model_file=first_model_path)
+        model_features = first_booster.feature_name()
+        
+        # Accumulate predictions across all 5 Seeds
+        h_preds = np.zeros(len(h_test))
+        model_count = 0
+        
+        for seed in SEEDS:
+            model_path = str(MODELS_DIR / f'lgbm_h{h}_full_seed{seed}.txt')
+            if os.path.exists(model_path):
+                booster = lgb.Booster(model_file=model_path)
+                h_preds += booster.predict(h_test[model_features])
+                model_count += 1
+        
+        if model_count == 0:
+            raise FileNotFoundError(f"No models found for Horizon {h}")
+            
+        h_preds /= model_count
+        preds[mask.values] = h_preds
+        
+        del h_test
+        gc.collect()
+
+    print("\n5. Packaging Result...")
+    submission = test_processed[['id']].copy()
+    submission['y_target'] = preds
     
-    print("\n8. Packaging Result...")
-    submission.to_csv(SUBMISSION_FILE, index=False)
-    print(f"\n==> SUCCESS: Submission ready at {SUBMISSION_FILE}")
-    print(f"Total Inference Time: {time.time() - start_time:.2f}s")
+    # Kaggle metrics often expect exact row order and specific column name!
+    print(" -> Restoring original row order & column name...")
+    root_sub = pd.read_csv(DATA_DIR / 'submission.csv', usecols=['id'])
+    submission = submission.set_index('id').loc[root_sub['id']].reset_index()
+    submission.rename(columns={'y_target': 'prediction'}, inplace=True)
+    
+    out_path = TEST_DIR / 'submission.csv'
+    submission.to_csv(out_path, index=False)
+    print(f"\n==> SUCCESS: Submission ready at {out_path}")
 
 if __name__ == '__main__':
-    main(retrain=1)
+    import time
+    start = time.time()
+    main(retrain=False)
+    print(f"Total Inference Time: {time.time() - start:.2f}s")

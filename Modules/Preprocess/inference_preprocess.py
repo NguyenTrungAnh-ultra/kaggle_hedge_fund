@@ -4,17 +4,11 @@ import time
 import os
 import sys
 import gc
-import numpy as np
 
-# Đảm bảo có thể import các module anh em khi chạy script trực tiếp
 try:
     from Modules.Preprocess.handle_na import NaN_Handler
-    from Modules.Preprocess.feature_builder import AlphaGenerator
-    from Modules.Preprocess.LogReturn import LogReturn_Handler
 except ImportError:
     from handle_na import NaN_Handler
-    from feature_builder import AlphaGenerator
-    from LogReturn import LogReturn_Handler
 
 class InferencePreprocess:
     """
@@ -48,7 +42,6 @@ class InferencePreprocess:
         df.reset_index(drop=True, inplace=True)
         
         # 4. Memory Optimization (Crucial for 6M+ rows)
-        # Chuyển đổi float64 sang float32 để tiết kiệm 1/2 bộ nhớ
         float64_cols = df.select_dtypes(include=['float64']).columns
         df[float64_cols] = df[float64_cols].astype('float32')
         print(f"   Memory Optimization: Chuyển {len(float64_cols)} cột sang float32.")
@@ -64,21 +57,9 @@ class InferencePreprocess:
         df = nan_handler.process(df, features)
         gc.collect()
 
-        # 6.5. Log Return for positive features (Must run BEFORE AlphaGenerator)
-        pos_features = [f for f in features if df[f].min() >= 0 and df[f].max() > 0]
-        print(f"2.5. Phát hiện {len(pos_features)} tính năng toàn dương. Xử lý Log Return...")
-        logret_handler = LogReturn_Handler(lag=1)
-        df = logret_handler.process(df, pos_features)
-        gc.collect()
-
-        # 7. AlphaGenerator (Lags & Momentum)
-        print("4. Bắt đầu tạo Alpha Features (Phái sinh từ Log Return)...")
-        # Sử dụng các bản _logret thay vì _sta
-        alpha_gen = AlphaGenerator(lag_features=['feature_al_logret', 'feature_am_logret', 'feature_u_logret'])
-        df = alpha_gen.inject_lagged_momentum(df)
-        gc.collect()
+        # Removed LogReturn and AlphaGenerator (Architectural Debt - We use RAW ONLY features now)
         
-        # 8. Final Sorting for Time-Series logic (Synced with new Hierarchy)
+        # 7. Final Sorting for Time-Series logic (Synced with new Hierarchy)
         print("4. Sắp xếp dữ liệu và xuất file...")
         df.sort_values(['sub_category', 'code', 'sub_code', 'horizon', 'ts_index'], inplace=True)
         df.reset_index(drop=True, inplace=True)

@@ -1,394 +1,337 @@
-import os
 import sys
-
-# Paths setup
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(BASE_DIR)
-if PROJECT_ROOT not in sys.path:
-    sys.path.append(PROJECT_ROOT)
-
-import pandas as pd
+import os
+import gc
 import numpy as np
+import pandas as pd
 import lightgbm as lgb
-from metric import weighted_rmse_score
+from pathlib import Path
+from Models.metric import weighted_rmse_score
 
+# Force UTF-8 encoding for stdout on Windows to prevent UnicodeEncodeError
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8')
 
-import warnings
-import optuna
-from Modules.PurgedKFold import LeakFreePurgedKFold
-from Pseudo_Huber_Loss import create_pseudo_huber_objective
+# ====================================================================
+# CONFIGURATION
+# ====================================================================
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DATA_DIR = PROJECT_ROOT
+MODELS_DIR = PROJECT_ROOT / 'models_param'
+LOGS_DIR = PROJECT_ROOT / 'Models' / 'logs' / 'reports'
+os.makedirs(MODELS_DIR, exist_ok=True)
+os.makedirs(LOGS_DIR, exist_ok=True)
 
-warnings.filterwarnings('ignore')
+HORIZONS = [1, 3, 10, 25]
+SEEDS = [42, 123, 7, 2024, 999]
 
-LOG_DIR = os.path.join(BASE_DIR, 'logs')
-DATA_DIR = os.path.join(PROJECT_ROOT, 'ts-forecasting')
-if not os.path.exists(LOG_DIR):
-    os.makedirs(LOG_DIR)
+LGB_PARAMS_BASE = {
+    "objective": "regression",
+    "metric": "rmse",
+    "learning_rate": 0.015,
+    "num_leaves": 80,
+    "max_depth": 6,
+    "min_child_samples": 200,
+    "subsample": 0.7,
+    "subsample_freq": 5,
+    "colsample_bytree": 0.6,
+    "reg_alpha": 0.1,
+    "reg_lambda": 10.0,
+    "n_jobs": -1,
+    "verbose": -1,
+    "device": "cpu"
+}
 
-def lgb_comp_score(preds, dataset):
-    y_true = dataset.get_label()
-    w = dataset.get_weight()
-    score = weighted_rmse_score(y_true, preds, w)
-    return 'comp_score', score, True
+SIGN_SPLIT_FEATURES = ['feature_n', 'feature_w', 'feature_x', 'feature_y', 'feature_z', 'feature_al', 'feature_ce']
+LAG_FEATURES = ['feature_al', 'feature_am', 'feature_cg', 'feature_by']
+LAGS = [1, 3, 5, 10, 25]
 
+# ====================================================================
+# HELPER FUNCTIONS
+# ====================================================================
+class LeakFreePurgedKFold:
+    def __init__(self, n_splits=5, pctEmbargo=0.01):
+        self.n_splits = n_splits
+        self.pctEmbargo = pctEmbargo
 
-def objective(trial, train_df, features):
-    # --- BƯỚC 1: TRÍCH XUẤT THAM SỐ ĐỘNG LỰC HỌC ---
-    # Phải lấy giá trị max_depth trước để làm cơ sở toán học tính toán giới hạn cho num_leaves
-    suggested_max_depth = trial.suggest_int('max_depth', 3, 6)
+    def split(self, X_meta):
+        ts_indices = X_meta['ts_index'].values
+        t1_ends = X_meta['t1_end'].values
+        
+        unique_ts = np.unique(ts_indices)
+        unique_ts.sort()
+        
+        max_ts = unique_ts[-1]
+        embargo_size = int(max_ts * self.pctEmbargo)
+        
+        fold_size = len(unique_ts) // self.n_splits
+        
+        for i in range(self.n_splits):
+            test_start_idx = i * fold_size
+            test_end_idx = (i + 1) * fold_size if i < self.n_splits - 1 else len(unique_ts)
+            
+            test_ts_range = unique_ts[test_start_idx:test_end_idx]
+            if len(test_ts_range) == 0:
+                continue
+                
+            test_start_ts = test_ts_range[0]
+            test_end_ts = test_ts_range[-1]
+            
+            test_mask = (ts_indices >= test_start_ts) & (ts_indices <= test_end_ts)
+            test_indices = np.where(test_mask)[0]
+            
+            embargo_end_ts = test_end_ts + embargo_size
+            train_mask = (t1_ends < test_start_ts) | (ts_indices > embargo_end_ts)
+            train_indices = np.where(train_mask)[0]
+            
+            yield train_indices, test_indices
 
-    # Dò tìm ngưỡng Delta (Độ lệch chuẩn của y_target khoảng 32.5, nên dò quanh vùng 5-100)
-    delta_opt = trial.suggest_float('pseudo_huber_delta', 5.0, 100.0)
+def make_recency_weights(ts_index, half_life_frac=0.5):
+    """
+    ts_index: pandas Series of timestamps
+    half_life_frac: fraction of the total time window at which weight is 0.5
+    """
+    if len(ts_index) == 0:
+        return np.ones(0)
+    min_ts, max_ts = ts_index.min(), ts_index.max()
+    if min_ts == max_ts:
+        return np.ones(len(ts_index))
+        
+    scaled_ts = (ts_index - min_ts) / (max_ts - min_ts)
+    decay_rate = -np.log(0.5) / half_life_frac
+    weights = np.exp(decay_rate * (scaled_ts - 1.0))
+    return weights.values
 
-    # Tính toán sức chứa tối đa theo lý thuyết
-    max_theoretical_leaves = 2 ** suggested_max_depth
+def apply_advanced_features(df):
+    # 1. Sign-Splits (DISABLED - proved to hurt CV in author's A/B test)
+    # for feat in SIGN_SPLIT_FEATURES:
+    #     if feat in df.columns:
+    #         df[f'{feat}_pos'] = np.maximum(df[feat].values, 0)
+    #         df[f'{feat}_neg'] = np.minimum(df[feat].values, 0)
+            
+    # 2. Feature Lags
+    df = df.sort_values(['code', 'sub_code', 'sub_category', 'ts_index'])
+    group_cols = ['code', 'sub_code', 'sub_category']
+    for col in LAG_FEATURES:
+        if col in df.columns:
+            grp = df.groupby(group_cols, sort=False, observed=False)[col]
+            for lag in LAGS:
+                df[f'{col}_lag_{lag}'] = grp.shift(lag)
     
-    # Ép Cây Bất đối xứng (Asymmetric Trees): num_leaves chỉ chiếm 40% - 75% sức chứa
-    lower_bound = max(8, int(max_theoretical_leaves * 0.4)) 
-    upper_bound = max(lower_bound, int(max_theoretical_leaves * 0.75))
-    
-    suggested_num_leaves = trial.suggest_int('num_leaves', lower_bound, upper_bound)
+    # Restore original order just in case
+    df = df.sort_values(['ts_index', 'code', 'sub_code']).reset_index(drop=True)
+    return df
 
-    # --- BƯỚC 2: KHAI BÁO DICTIONARY TIÊU CHUẨN ---
+def compute_target_encoding(train_df):
+    enc_maps = {}
+    # Handle categoricals correctly by using observed=False to avoid future warnings
+    global_mean = train_df['y_target'].mean()
+    for col in ['sub_code', 'sub_category']:
+        enc_maps[col] = train_df.groupby(col, observed=False)['y_target'].mean().to_dict()
+    return enc_maps, global_mean
+
+def apply_target_encoding(df, enc_maps, global_mean):
+    df = df.copy()
+    for col in ['sub_code', 'sub_category']:
+        df[f'{col}_target_enc'] = df[col].astype('object').map(enc_maps[col]).fillna(global_mean).astype('float32')
+    return df
+
+def select_top_features(train_df, feature_cols, target_col='y_target', weight_col='weight', n_features=50):
+    ts_max = train_df['ts_index'].max()
+    cutoff = ts_max - 600
+    
+    tr_mask = train_df['ts_index'] <= cutoff
+    val_mask = train_df['ts_index'] > cutoff
+    
+    if tr_mask.sum() < 1000 or val_mask.sum() < 100:
+        return feature_cols[:n_features]
+        
+    X_tr = train_df.loc[tr_mask, feature_cols]
+    y_tr = train_df.loc[tr_mask, target_col].values
+    w_tr = train_df.loc[tr_mask, weight_col].values
+    
+    X_va = train_df.loc[val_mask, feature_cols]
+    y_va = train_df.loc[val_mask, target_col].values
+    w_va = train_df.loc[val_mask, weight_col].values
+    
     params = {
-        'objective': 'None',
-        'metric': 'None',
-        'verbosity': -1,
-        'verbose': -1,
-        'boosting_type': 'gbdt',
-        'learning_rate': trial.suggest_float('learning_rate', 0.005, 0.1, log=True),
-        
-        # 1. PHANH CẤU TRÚC (STRUCTURAL BRAKES) - Đã được gán giá trị động
-        'max_depth': suggested_max_depth,
-        'num_leaves': suggested_num_leaves,
-        
-        # 2. PHANH LÁ & ĐIỀU CHUẨN (LEAF & PENALTY BRAKES)
-        'min_data_in_leaf': trial.suggest_int('min_data_in_leaf', 1000, 5000), 
-        'lambda_l1': trial.suggest_float('lambda_l1', 1e-3, 10.0, log=True), 
-        'lambda_l2': trial.suggest_float('lambda_l2', 1e-1, 50.0, log=True), 
-        'min_sum_hessian_in_leaf': trial.suggest_float('min_sum_hessian_in_leaf', 1e-3, 10.0, log=True),
-        
-        # 3. PHANH LẤY MẪU (SAMPLING BRAKES) 
-        'feature_fraction': trial.suggest_float('feature_fraction', 0.4, 0.8), 
-        'bagging_fraction': trial.suggest_float('bagging_fraction', 0.5, 0.9), 
-        'bagging_freq': trial.suggest_int('bagging_freq', 1, 5),
-        
-        'extra_trees': trial.suggest_categorical('extra_trees', [True, False]), 
-        'device': 'cpu'
+        "objective": "regression",
+        "metric": "rmse",
+        "learning_rate": 0.05,
+        "num_leaves": 31,
+        "max_depth": 6,
+        "n_estimators": 150,
+        "random_state": 42,
+        "n_jobs": -1,
+        "verbose": -1
     }
-
-    # Use a simple Hold-out (last 20% of the sample for validation) to be extremely fast
-    # train_df is already sorted by time (ts_index)
-    unique_ts = np.sort(train_df['ts_index'].unique())
-    split_idx = int(len(unique_ts) * 0.8)
-    split_ts = unique_ts[split_idx]
-
-    tr_mask = train_df['ts_index'] < split_ts
-    va_mask = train_df['ts_index'] >= split_ts
     
-    # Purge the gap in-between
-    va_start = train_df[va_mask]['ts_index'].min()
-    overlap_mask = (tr_mask) & (train_df['t1_end'] > va_start)
-    tr_mask = tr_mask & (~overlap_mask)
-
-    X_tr = train_df[tr_mask][features].values
-    y_tr = train_df[tr_mask]['y_target'].values
-    w_tr = train_df[tr_mask]['weight'].values
-
-    X_va = train_df[va_mask][features].values
-    y_va = train_df[va_mask]['y_target'].values
-    w_va = train_df[va_mask]['weight'].values
-
-    print(f"    [Trial {trial.number}] Training with {len(X_tr)} samples, Val with {len(X_va)}...")
+    dtrain = lgb.Dataset(X_tr, label=y_tr, weight=w_tr)
+    dval = lgb.Dataset(X_va, label=y_va, weight=w_va, reference=dtrain)
     
-    # Calculate categorical indices once
-    cat_cols = ['code', 'sub_code', 'sub_category', 'horizon']
-    cat_indices = [features.index(c) for c in cat_cols if c in features]
-
-    dtrain = lgb.Dataset(X_tr, label=y_tr, weight=w_tr, feature_name=features, categorical_feature=cat_indices)
-    dval = lgb.Dataset(X_va, label=y_va, weight=w_va, reference=dtrain, feature_name=features, categorical_feature=cat_indices)
-
-    trial_params = params.copy()
-    num_boost_round = trial_params.pop('n_estimators', 100)
-
-    trial_params['objective'] = create_pseudo_huber_objective(delta=delta_opt)
-
     model = lgb.train(
-        trial_params,
+        params,
         dtrain,
         valid_sets=[dval],
-        valid_names=['valid'],
-        feval=lgb_comp_score,
-        num_boost_round=num_boost_round,
-        callbacks=[lgb.early_stopping(stopping_rounds=30, verbose=False)]
+        callbacks=[lgb.early_stopping(stopping_rounds=15, verbose=False)]
     )
-
-    v_preds = model.predict(X_va)
-    w_score = weighted_rmse_score(y_va, v_preds, w_va)
-    print(f"    [Trial {trial.number}] Competition Score (R): {w_score:.6f}")
     
-    # Giải phóng bộ nhớ RAM nội bộ Trial
-    del X_tr, y_tr, w_tr, X_va, y_va, w_va, dtrain, dval
-    
-    return w_score
+    importances = pd.Series(model.feature_importance(importance_type='gain'), index=feature_cols)
+    top_n = importances.sort_values(ascending=False).head(n_features).index.tolist()
+    return top_n
 
-def run_lgbm(file_path, tuning=False, training=True):
+# ====================================================================
+# MAIN TRAIN ROUTINE
+# ====================================================================
+def run_lgbm(file_path, training=True):
     print("1. Loading dataset...")
-    # Read the data produced by process_data.py
-    if not os.path.exists(file_path):
-        print(f"Error: Could not find {file_path}")
-        return
-        
     df = pd.read_parquet(file_path)
     print(f"Dataset shape: {df.shape}")
-
-    # Prepare t1 (Label End Time) column BEFORE optimization (calculating with category dtype fails)
-    df['t1_end'] = df['ts_index'] + df['horizon']
-
-    # --- BƯỚC 1.1: TỐI ƯU HÓA BỘ NHỚ (OOM PREVENTION) ---
-    print("   -> Đang tối ưu hóa kiểu dữ liệu để chống tràn RAM...")
-    start_mem = df.memory_usage().sum() / 1024**2
     
-    # Định nghĩa các nhóm cột
+    print("   -> Applying Causal Insights (Lags only) on FULL dataset...")
+    df = apply_advanced_features(df)
+    
+    print("   -> Optimizing data types to prevent RAM overflow...")
     exclude_cols = ['y_target', 'weight']
     cat_cols = ['code', 'sub_code', 'sub_category', 'horizon']
     
     for col in df.columns:
         if col in exclude_cols:
             continue
-            
         if col in cat_cols:
-            # Ép kiểu category cho các cột phân loại để LightGBM đọc được DataFrame
             df[col] = df[col].astype('category')
-        elif col.startswith('feature_'):
-            # Chuyển các đặc trưng về float32
-            df[col] = df[col].astype(np.float32)
         elif col.startswith('is_nan_'):
-            # Chuyển các cột flag về int8
             df[col] = df[col].astype(np.int8)
-    
-    end_mem = df.memory_usage().sum() / 1024**2
-    print(f"   -> Bộ nhớ giảm từ {start_mem:.2f} MB xuống {end_mem:.2f} MB ({100 * (start_mem - end_mem) / start_mem:.1f}% reduction)")
-    
-    import gc
-    gc.collect()
 
-    # Sort firmly by time to ensure absolute order
-    df = df.sort_values(['ts_index', 'code', 'sub_code']).reset_index(drop=True)
-    
-    # Check NA in target
+    # Filter invalid targets early
     valid_mask = df['y_target'].notna()
     if not valid_mask.all():
-        print(f"Dropping {(~valid_mask).sum()} rows with missing target.")
         df = df[valid_mask].copy().reset_index(drop=True)
 
-    # Note: Using FULL dataset for Cross-Validation (No Hold-out)
-    # Use the existing df, avoid redundant copies
-    train_df = df 
-    print(f"Final Train shape: {train_df.shape}")
+    df['t1_end'] = df['ts_index'] + df['horizon'].astype(int)
+    df = df.sort_values(['ts_index', 'code', 'sub_code']).reset_index(drop=True)
 
-    # Definition of features
-    # Categorical cols (code, sub_code, sub_category, horizon) are kept as features
-    # and handled natively by LightGBM via categorical_feature param in lgb.Dataset
-    exclude = ['id', 'y_target', 'weight', 'ts_index', 't1_end']
-    features = [c for c in df.columns if c not in exclude]
-    
-    # Drop constant columns which can cause GPU split errors
-    # or columns that are all 0 or all 1 (specifically flag columns).
-    print(f"Scanning {len(features)} features for constant or all-0/all-1 flag columns...")
-    const_cols = []
-    for col in features:
-        # Fast check for constant columns (nunique=1 handles all-0, all-1, or any constant value)
-        if df[col].nunique() <= 1:
-            const_cols.append(col)
-            
-    if const_cols:
-        flag_const = [c for c in const_cols if 'is_nan' in c]
-        if flag_const:
-            print(f"Dropping {len(flag_const)} constant flag columns (all-0 or all-1).")
-        
-        other_const = [c for c in const_cols if 'is_nan' not in c]
-        if other_const:
-            print(f"Dropping {len(other_const)} other constant columns.")
-            
-        features = [c for c in features if c not in const_cols]
-        
-    print(f"Total modeling features: {len(features)}")
-
-    def tune():
-        print("\n3. Starting Optuna Hyperparameter Tuning (using 20% sample + Single Split for extreme speed)...")
-        # Add Optuna log handler to write to our log file
-        import logging
-        optuna_log_file = os.path.join(LOG_DIR, "lightgbm_train.log")
-        optuna.logging.get_logger("optuna").addHandler(logging.FileHandler(optuna_log_file))
-        
-        # Lấy danh sách các mốc thời gian duy nhất đã được sắp xếp
-        unique_ts = np.sort(train_df['ts_index'].unique())
-
-        # Lấy 20% số lượng mốc thời gian GẦN NHẤT (không phải 20% số hàng)
-        cut_off_idx = int(len(unique_ts) * 0.8)
-        cut_off_time = unique_ts[cut_off_idx]
-
-        # Lọc toàn bộ các hàng thuộc 20% khung thời gian cuối này
-        train_df_sample = train_df[train_df['ts_index'] >= cut_off_time].copy().reset_index(drop=True)
-        # Ensure it's sorted by time for the split logic
-        train_df_sample = train_df_sample.sort_values('ts_index').reset_index(drop=True)
-        
-        study = optuna.create_study(direction='maximize')
-        study.optimize(lambda trial: objective(trial, train_df_sample, features), n_trials=20)
-        
-        print("\nBest trial:")
-        trial = study.best_trial
-        print(f"  Value: {trial.value}")
-        print("  Params: ")
-        for key, value in trial.params.items():
-            print(f"    {key}: {value}")
-
-        # Save best parameters to JSON
-        import json
-        param_dir = os.path.join(PROJECT_ROOT, "models_param")
-        os.makedirs(param_dir, exist_ok=True)
-        
-        param_path = os.path.join(param_dir, "lgb_best_param.json")
-        with open(param_path, 'w') as f:
-            json.dump(trial.params, f, indent=4)
-        print(f"\nBest parameters saved to {param_path}")
-
-        params = trial.params
-        del train_df_sample # Giải phóng bộ nhớ RAM
-        return params
-
-    # 3. Handle Hyperparameters: Tune or Load from JSON
-    import json
-    param_path = os.path.join(PROJECT_ROOT, 'models_param', 'lgb_best_param.json')
-    
-    if tuning:
-        best_params = tune()
-    elif os.path.exists(param_path):
-        with open(param_path, 'r') as f:
-            best_params = json.load(f)
-        print(f"Loaded parameters from {param_path}")
-    else:
-        print(f"Warning: {param_path} not found and tuning=False. Running tuning as fallback...")
-        best_params = tune()
-
-    # Standard system-level parameters
-    best_params.update({
-        'metric': 'None',
-        'verbosity': -1,
-        'verbose': -1,
-        'boosting_type': 'gbdt',
-        'device': 'cpu',
-        'gpu_use_dp': True,
-        'importance_type': 'gain'
-    })
-
+    val_preds = np.zeros(len(df), dtype=np.float64)
     cv = LeakFreePurgedKFold(n_splits=5, pctEmbargo=0.01)
     
-    models = []
+    print("\n4. Starting Leak-Free Purged K-Fold Training (Per-Horizon, Target Encoding, Feature Selection, Recency, 5-Seed)...")
+    
     fold_scores = []
     
-    os.makedirs(os.path.join(PROJECT_ROOT, 'models_param'), exist_ok=True)
-    
-    if training:
-        print(f"\n\n4. Starting Leak-Free Purged K-Fold Training with Best Parameters...")
+    for fold, (train_idx, val_idx) in enumerate(cv.split(df[['ts_index', 't1_end']])):
+        print(f"\n--- Fold {fold+1} ---")
         
-
-        X_train_full = train_df[features] # Keep as DataFrame (No .values)
-        y_train_full = train_df['y_target']
-        w_train_full = train_df['weight']
+        y_va_all = []
+        p_va_all = []
+        w_va_all = []
         
-        cv_meta = train_df[['ts_index', 't1_end']].copy()
-        print("   -> Đã chuẩn bị xong dữ liệu thô (Lazy mode).")
-        
-        fold = 1
-        for train_idx, val_idx in cv.split(cv_meta):
-            print(f"\n--- Fold {fold} ---")
+        for h in HORIZONS:
+            print(f" >> Horizon {h}")
+            h_mask = (df['horizon'] == h)
             
-            X_tr, y_tr, w_tr = X_train_full.iloc[train_idx], y_train_full.iloc[train_idx], w_train_full.iloc[train_idx]
-            X_va, y_va, w_va = X_train_full.iloc[val_idx], y_train_full.iloc[val_idx], w_train_full.iloc[val_idx]
+            # Intersection of fold idx and horizon
+            h_train_mask = h_mask.copy()
+            h_train_mask.iloc[val_idx] = False
             
-            print(f"Inner Train samples: {len(X_tr)} | Inner Val samples: {len(X_va)}")
+            h_val_mask = h_mask.copy()
+            h_val_mask.iloc[train_idx] = False
             
-            # Calculate categorical indices
-            cat_cols = ['code', 'sub_code', 'sub_category', 'horizon']
-            cat_indices = [features.index(c) for c in cat_cols if c in features]
-
-            dtrain = lgb.Dataset(X_tr, label=y_tr, weight=w_tr, feature_name=features, categorical_feature=cat_indices)
-            dval = lgb.Dataset(X_va, label=y_va, weight=w_va, reference=dtrain, feature_name=features, categorical_feature=cat_indices)
-
-            params = best_params.copy()
-            num_boost_round = params.pop('n_estimators', 1000)
-            delta_opt = params.get('pseudo_huber_delta', 15.0)
-            params['objective'] = create_pseudo_huber_objective(delta=delta_opt)
-
-            model = lgb.train(
-                params,
-                dtrain,
-                valid_sets=[dval, dtrain],
-                valid_names=['valid', 'train'],
-                feval=lgb_comp_score,
-                num_boost_round=num_boost_round,
-                callbacks=[
-                    lgb.early_stopping(stopping_rounds=100, verbose=False),
-                    lgb.log_evaluation(period=50)]
+            h_train = df[h_train_mask].copy()
+            h_val = df[h_val_mask].copy()
+            
+            # === Target Encoding (Compute on train, apply to both) ===
+            enc_maps, global_mean = compute_target_encoding(h_train)
+            h_train = apply_target_encoding(h_train, enc_maps, global_mean)
+            h_val = apply_target_encoding(h_val, enc_maps, global_mean)
+            
+            # === Feature Selection (Top 50) ===
+            exclude_feats = ['id', 'y_target', 'weight', 'ts_index', 't1_end', 'horizon', 'code', 'sub_code', 'sub_category']
+            candidate_features = [c for c in h_train.columns if c not in exclude_feats and 'logret' not in c]
+            
+            top_features = select_top_features(h_train, candidate_features, n_features=50)
+            
+            # Include categories and target encodings in the final feature list
+            must_keep = ['code', 'sub_code', 'sub_category', 'sub_code_target_enc', 'sub_category_target_enc']
+            h_features = list(dict.fromkeys([c for c in must_keep if c in h_train.columns] + top_features))
+            
+            cat_indices = [h_features.index(c) for c in ['code', 'sub_code', 'sub_category'] if c in h_features]
+            
+            # Target clipping
+            y_tr = h_train['y_target'].values.copy()
+            lo_val = np.percentile(y_tr, 5)
+            hi_val = np.percentile(y_tr, 95)
+            y_tr_clipped = np.clip(y_tr, lo_val, hi_val)
+            
+            # Recency Weights
+            ts_tr = h_train['ts_index']
+            base_w = h_train['weight'].values
+            recency_w = make_recency_weights(ts_tr, half_life_frac=0.5)
+            w_tr = base_w * recency_w
+            
+            y_va = h_val['y_target'].values
+            w_va = h_val['weight'].values
+            
+            dval = lgb.Dataset(
+                h_val[h_features], label=y_va, weight=w_va, categorical_feature=cat_indices, free_raw_data=False
             )
             
-            # Save model
-            model_filename = os.path.join(PROJECT_ROOT, "models_param", f"lgbm_fold_{fold}.txt")
-            model.save_model(model_filename)
-            print(f"Saved model to {model_filename}")
+            # Ensemble predictions
+            h_seed_preds = np.zeros(len(h_val))
             
-            v_preds = model.predict(X_va)
-            v_score = weighted_rmse_score(y_va, v_preds, w_va)
-            print(f"Fold {fold} Competition Score (R): {v_score:.5f}")
-            fold_scores.append(v_score)
+            for seed in SEEDS:
+                # Update seed in params
+                params = LGB_PARAMS_BASE.copy()
+                params['random_state'] = seed
+                
+                dtrain = lgb.Dataset(
+                    h_train[h_features], label=y_tr_clipped, weight=w_tr, categorical_feature=cat_indices
+                )
+                
+                model = lgb.train(
+                    params,
+                    dtrain,
+                    num_boost_round=1000,
+                    valid_sets=[dval, dtrain],
+                    valid_names=['valid', 'train'],
+                    callbacks=[
+                        lgb.early_stopping(stopping_rounds=50, verbose=False),
+                        lgb.log_evaluation(period=0)
+                    ]
+                )
+                
+                # Predict and accumulate
+                h_seed_preds += model.predict(h_val[h_features])
+                
+                # Save model
+                model_name = MODELS_DIR / f'lgbm_h{h}_f{fold}_seed{seed}.txt'
+                model.save_model(model_name)
+                
+            # Average predictions over seeds
+            h_seed_preds /= len(SEEDS)
             
-            models.append(model)
+            # Store fold predictions
+            val_preds[h_val_mask.values] = h_seed_preds
             
-            # Giải phóng bộ nhớ từng Fold
-            del X_tr, y_tr, w_tr, X_va, y_va, w_va, dtrain, dval
-            import gc
+            y_va_all.extend(y_va)
+            p_va_all.extend(h_seed_preds)
+            w_va_all.extend(w_va)
+            
+            # Clear memory
+            del h_train, h_val, dtrain, dval, y_tr, w_tr, recency_w
             gc.collect()
-            fold += 1
-
-        print(f"\n==> AVERAGE CV COMPETITION SCORE: {np.mean(fold_scores):.6f} (+/- {np.std(fold_scores):.6f})")
-    else:
-        print("\n4. Skipping training, loading models from models_param...")
-        for fold in range(1, 6):
-            model_filename = os.path.join(PROJECT_ROOT, "models_param", f"lgbm_fold_{fold}.txt")
-            if not os.path.exists(model_filename):
-                print(f"Error: Model not found at {model_filename}")
-                raise FileNotFoundError(f"Missing model for fold {fold}. Run with training=True first.")
-            
-            print(f"Loading model: {model_filename}")
-            model = lgb.Booster(model_file=model_filename)
-            models.append(model)
-        
-    final_score = np.mean(fold_scores) if fold_scores else 0
-    print(f"\n5. Final Assessment (CV Mean Score): {final_score:.6f}")
+ 
+        score = weighted_rmse_score(np.array(y_va_all), np.array(p_va_all), np.array(w_va_all))
+        print(f"Fold {fold+1} Competition Score (R): {score:.5f}")
+        fold_scores.append(score)
+ 
+    mean_score = np.mean(fold_scores)
+    std_score = np.std(fold_scores)
     
-    # Feature importances
-    imp_df = pd.DataFrame({'feature': features})
-    if training:
-        imp_df['importance'] = np.mean([m.feature_importance(importance_type='gain') for m in models], axis=0)
-    else:
-        # For Booster objects, we use feature_importance()
-        imp_df['importance'] = np.mean([m.feature_importance(importance_type='gain') for m in models], axis=0)
-    imp_df = imp_df.sort_values(by='importance', ascending=False)
+    oof_mask = df['y_target'].notna()
+    oof_score = weighted_rmse_score(df.loc[oof_mask, 'y_target'].values, val_preds[oof_mask], df.loc[oof_mask, 'weight'].values)
     
-    report_file = os.path.join(LOG_DIR, 'reports', 'feature_important.txt')
-    os.makedirs(os.path.dirname(report_file), exist_ok=True)
-    with open(report_file, 'w') as f:
-        f.write("=== FINAL CV EVALUATION ===\n")
-        f.write("Method: Leak-Free Purged K-Fold (Full Training Set)\n")
-        f.write(f"Average CV Competition Score (R): {final_score:.6f}\n\n")
-        f.write("Note: Models have been saved to 'models_param' directory.\n\n")
-        f.write("Top 20 Features:\n")
-        f.write(imp_df.to_string(index=False))
-        
-    print(f"\nReport saved to {report_file}")
-
+    print(f"\n==> AVERAGE CV SCORE: {mean_score:.6f} (+/- {std_score:.6f})")
+    print(f"==> OVERALL OOF SCORE: {oof_score:.6f}\n")
+ 
 if __name__ == '__main__':
-    file_path = os.path.join(DATA_DIR, 'train_feature_builded.parquet')
-    run_lgbm(file_path=file_path, tuning=0, training=1)
+    file_path = os.path.join(DATA_DIR, 'ts-forecasting', 'train_feature_builded.parquet')
+    run_lgbm(file_path=file_path, training=True)
